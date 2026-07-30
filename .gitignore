@@ -1,0 +1,32 @@
+# Ambiente virtual / cache Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Saidas geradas em tempo de execucao
+logs/*.log
+reports/*.csv
+reports/*.json
+progress/*.json
+
+# Ambiente ficticio gerado pelos testes
+tests/fixtures/
+
+# Estado local de ferramentas (Claude Code, editores, etc.)
+.claude/
+
+# Configuracao local com caminhos sensiveis do ambiente do usuario
+config.local.json
+
+# Diversos
+Thumbs.db
+desktop.ini
+*.tmp
+
+# Manter as pastas no controle de versao mesmo vazias
+!logs/.gitkeep
+!reports/.gitkeep
+!progress/.gitkeep
+!resources/.gitkeep

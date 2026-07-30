@@ -1,0 +1,14 @@
+{
+  "Origem": "fixtures",
+  "Filtro": ".*\\.pdf$",
+  "EnableHash": true,
+  "Threads": 4,
+  "LivroPattern": null,
+  "PowerShellScriptPath": null,
+  "PowerShellConfigPath": null,
+  "ReportsDir": "reports_teste",
+  "LogsDir": "logs_teste",
+  "ProgressDir": "progress_teste",
+  "SaveProgressEveryNFiles": 3,
+  "SaveProgressEverySeconds": 5
+}

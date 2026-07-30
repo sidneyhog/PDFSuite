@@ -1,0 +1,14 @@
+{
+  "Origem": "O:/",
+  "Filtro": ".*\\.pdf$",
+  "EnableHash": true,
+  "Threads": 8,
+  "LivroPattern": null,
+  "PowerShellScriptPath": "C:/Users/Mirella/Desktop/Dev/Cartorio/Automacao Copia de arquivos/CopiarPDFs.ps1",
+  "PowerShellConfigPath": "C:/Users/Mirella/Desktop/Dev/Cartorio/Automacao Copia de arquivos/config.json",
+  "ReportsDir": "reports",
+  "LogsDir": "logs",
+  "ProgressDir": "progress",
+  "SaveProgressEveryNFiles": 100,
+  "SaveProgressEverySeconds": 15
+}
