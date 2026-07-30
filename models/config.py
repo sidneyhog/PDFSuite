@@ -26,3 +26,6 @@ class AppConfig:
     progress_dir: Path = field(default_factory=lambda: Path("progress"))
     save_progress_every_n_files: int = 100
     save_progress_every_seconds: int = 15
+    rename_destino: Optional[Path] = None
+    rename_pagina_digits: int = 4
+    rename_data_formato: str = "%Y%m%d"

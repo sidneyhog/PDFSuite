@@ -10,5 +10,8 @@
   "LogsDir": "logs",
   "ProgressDir": "progress",
   "SaveProgressEveryNFiles": 100,
-  "SaveProgressEverySeconds": 15
+  "SaveProgressEverySeconds": 15,
+  "RenameDestino": null,
+  "RenamePaginaDigits": 4,
+  "RenameDataFormato": "%Y%m%d"
 }

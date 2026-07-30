@@ -23,10 +23,12 @@ from modules.split_module import SplitModule
 from repositories.config_repository import ConfigRepository
 from repositories.inventory_repository import InventoryRepository
 from repositories.progress_repository import ProgressRepository
+from repositories.rename_repository import RenameRepository
 from services.hasher_service import HasherService
 from services.inventory_service import InventoryService
 from services.logging_setup import setup_logging
 from services.pdf_inspector_service import PdfInspectorService
+from services.rename_template_service import RenameTemplateService
 from services.scanner_service import ScannerService
 
 _ROOT_DIR = Path(__file__).resolve().parent
@@ -67,11 +69,15 @@ def main() -> int:
     copy_module = CopyModule(config)
     config_module = ConfigModule(config, str(config_path))
 
+    rename_repository = RenameRepository(config.reports_dir)
+    rename_template_service = RenameTemplateService()
+    rename_module = RenameModule(config, inventory_repository, rename_repository, rename_template_service)
+
     menu = Menu(
         [
             MenuOption("1", "Inventario", inventory_module.run),
             MenuOption("2", "Copiar PDFs", copy_module.run),
-            MenuOption("3", "Renomear PDFs", RenameModule().run),
+            MenuOption("3", "Renomear PDFs", rename_module.run),
             MenuOption("4", "Separar paginas", SplitModule().run),
             MenuOption("5", "Unir PDFs", MergeModule().run),
             MenuOption("6", "Auditoria", AuditModule().run),

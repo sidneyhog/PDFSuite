@@ -53,21 +53,34 @@ class InventoryRepository:
         """Carrega o ultimo Inventario.json salvo e o indexa pela chave de
         cache (caminho + tamanho + mtime) de cada registro, para que o
         InventoryService possa reaproveitar arquivos que nao mudaram desde a
-        ultima execucao, sem reabri-los.
+        ultima execucao, sem reabri-los. Duplicidade e sempre recalculada a
+        cada execucao (nao faz sentido em um registro de cache isolado).
         """
+        registros = self._load_registros(resetar_duplicidade=True)
+        return {registro.chave_cache: registro for registro in registros}
+
+    def load_all(self) -> list[PdfRecord]:
+        """Carrega o ultimo Inventario.json salvo como uma lista simples, na
+        ordem em que foi gravado - usado por outros modulos (ex: Renomeacao)
+        que precisam apenas dos dados, sem reescanear nada (o "inventario
+        permanente" da visao do produto).
+        """
+        return self._load_registros(resetar_duplicidade=False)
+
+    def _load_registros(self, *, resetar_duplicidade: bool) -> list[PdfRecord]:
         if not self._json_path.exists():
-            return {}
+            return []
 
         try:
             dados = json.loads(self._json_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as erro:
-            logger.warning("Falha ao ler inventario anterior '%s' para cache: %s", self._json_path, erro)
-            return {}
+            logger.warning("Falha ao ler inventario anterior '%s': %s", self._json_path, erro)
+            return []
 
-        cache: dict[tuple[str, int, float], PdfRecord] = {}
+        registros: list[PdfRecord] = []
         for item in dados:
             try:
-                registro = PdfRecord(
+                registros.append(PdfRecord(
                     caminho=Path(item["caminho"]),
                     nome=item["nome"],
                     tamanho_bytes=item["tamanho_bytes"],
@@ -76,13 +89,12 @@ class InventoryRepository:
                     sha256=item.get("sha256"),
                     paginas=item.get("paginas"),
                     livro=item.get("livro"),
-                    duplicado=False,  # duplicidade e sempre recalculada a cada execucao
-                    duplicado_de=None,
+                    duplicado=False if resetar_duplicidade else bool(item.get("duplicado", False)),
+                    duplicado_de=None if resetar_duplicidade or not item.get("duplicado_de") else Path(item["duplicado_de"]),
                     observacoes=item.get("observacoes", ""),
-                )
+                ))
             except (KeyError, ValueError) as erro:
                 logger.debug("Registro invalido no inventario anterior, ignorado: %s", erro)
                 continue
-            cache[registro.chave_cache] = registro
 
-        return cache
+        return registros

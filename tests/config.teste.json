@@ -3,12 +3,15 @@
   "Filtro": ".*\\.pdf$",
   "EnableHash": true,
   "Threads": 4,
-  "LivroPattern": null,
+  "LivroPattern": "^(?P<livro>\\w+?)_",
   "PowerShellScriptPath": null,
   "PowerShellConfigPath": null,
   "ReportsDir": "reports_teste",
   "LogsDir": "logs_teste",
   "ProgressDir": "progress_teste",
   "SaveProgressEveryNFiles": 3,
-  "SaveProgressEverySeconds": 5
+  "SaveProgressEverySeconds": 5,
+  "RenameDestino": "renomeados_teste",
+  "RenamePaginaDigits": 4,
+  "RenameDataFormato": "%Y%m%d"
 }

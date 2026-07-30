@@ -12,7 +12,7 @@ O `CopiarPDFs.ps1` (PowerShell) continua existindo, intocado, como ferramenta le
 |---|---|---|
 | 1 | Inventário | ✅ Completo e funcional |
 | 2 | Copiar PDFs | ✅ Ponte para o `CopiarPDFs.ps1` |
-| 3 | Renomear PDFs | 🔜 Próxima sessão |
+| 3 | Renomear PDFs | ✅ Completo e funcional |
 | 4 | Separar páginas | 🔜 Próxima sessão |
 | 5 | Unir PDFs | 🔜 Próxima sessão |
 | 6 | Auditoria | 🔜 Próxima sessão |
@@ -56,7 +56,10 @@ Edite [`config.json`](config.json):
   "LogsDir": "logs",
   "ProgressDir": "progress",
   "SaveProgressEveryNFiles": 100,
-  "SaveProgressEverySeconds": 15
+  "SaveProgressEverySeconds": 15,
+  "RenameDestino": null,
+  "RenamePaginaDigits": 4,
+  "RenameDataFormato": "%Y%m%d"
 }
 ```
 
@@ -66,9 +69,12 @@ Edite [`config.json`](config.json):
 | `Filtro` | Regex (case-insensitive) aplicada ao nome do arquivo. Padrão: todos os `.pdf`. |
 | `EnableHash` | Calcula SHA-256 de cada arquivo (necessário para detectar duplicados por conteúdo). |
 | `Threads` | Threads usadas para inspecionar/hashear arquivos em paralelo (1–128). |
-| `LivroPattern` | Regex opcional com grupo nomeado `(?P<livro>...)` para extrair o identificador do "Livro" a partir do nome do arquivo. |
+| `LivroPattern` | Regex opcional com grupo nomeado `(?P<livro>...)` para extrair o identificador do "Livro" a partir do nome do arquivo — usado pelo Inventário e necessário para o módulo de Renomeação agrupar os arquivos. |
 | `PowerShellScriptPath` / `PowerShellConfigPath` | Caminhos usados pela opção "Copiar PDFs" para invocar o `CopiarPDFs.ps1`. |
 | `ReportsDir` / `LogsDir` / `ProgressDir` | Pastas de saída (relativas ao `config.json` se não forem absolutas). |
+| `RenameDestino` | Pasta padrão sugerida no módulo de Renomeação (editável na hora; pode ficar `null`). |
+| `RenamePaginaDigits` | Quantidade de dígitos do placeholder `{Pagina}` nos templates de renomeação (padrão 4 → `0001`). |
+| `RenameDataFormato` | Formato `strftime` do placeholder `{Data}` nos templates (padrão `%Y%m%d` → `20260730`). |
 
 ### Atenção com barras invertidas em JSON
 
@@ -97,6 +103,24 @@ Escaneia a `Origem` configurada e gera, em `reports/`, `Inventario.csv` e `Inven
 
 **Retomada**: se a execução for interrompida, `progress/progresso.json` guarda o que já foi processado; na próxima execução o PDFSuite pergunta se deseja continuar de onde parou.
 
+## Módulo de Renomeação
+
+Renomeia PDFs em lote a partir de **templates configuráveis**, sem programar regra nenhuma fixa. Reaproveita o último Inventário salvo (não escaneia a origem de novo) e **nunca toca nos arquivos originais** — sempre copia com o nome novo para uma pasta de destino.
+
+Fluxo: escolha um template → escolha/confirme o destino → **pré-visualização** (ANTES → DEPOIS) → confirmação `[S]/[N]` → cópia.
+
+Templates prontos (ou digite um customizado com os mesmos placeholders):
+
+| Template | Exemplo |
+|---|---|
+| `{Livro}_{Pagina}` | `15_0001.pdf` |
+| `Livro-{Livro}-Pag-{Pagina}` | `Livro-15-Pag-0001.pdf` |
+| `{Data}_{Livro}_{Pagina}` | `20260730_15_0001.pdf` |
+
+Placeholders disponíveis: `{Livro}` (extraído pelo `LivroPattern` do Inventário), `{Pagina}` (contador sequencial dentro de cada Livro, na ordem do nome original, zero-preenchido conforme `RenamePaginaDigits`), `{Data}` (formato `RenameDataFormato`), `{NomeOriginal}`, `{Extensao}`.
+
+Arquivos sem `Livro` identificado no Inventário são ignorados do plano (evita gerar `None_0001.pdf`) — o resumo mostra quantos foram ignorados. Colisão de nome no destino nunca sobrescreve: recebe sufixo `(2)`, `(3)`... como no `CopiarPDFs.ps1`. Cada execução grava `reports/Renomeacao_<timestamp>.csv` com a rastreabilidade completa (original → novo nome).
+
 ## Testes
 
 ```bash
@@ -118,9 +142,10 @@ PDFSuite/
 ├── config.json
 ├── requirements.txt / requirements-dev.txt
 ├── modules/                # controllers finos (menu + 1 arquivo por funcionalidade)
-├── models/                 # dataclasses/enums puros (PdfRecord, AppConfig, ...)
-├── services/                # regra de negocio (Scanner, Hasher, PdfInspector, Inventory, OCR-stub)
-├── repositories/            # persistencia (Inventory, Config, Progress)
+├── models/                 # dataclasses/enums puros (PdfRecord, AppConfig, RenamePlanItem, ...)
+├── services/                # regra de negocio (Scanner, Hasher, PdfInspector, Inventory,
+│                            #   RenameTemplate, Naming, OCR-stub)
+├── repositories/            # persistencia (Inventory, Config, Progress, Rename)
 ├── logs/ reports/ progress/ # saidas geradas em tempo de execucao
 ├── resources/                # reservado para recursos futuros (templates, icones de GUI)
 ├── docs/ARCHITECTURE.md      # arquitetura detalhada

@@ -29,8 +29,9 @@ models/        dataclasses + enums puros. Zero dependências de outras camadas.
 
 | Padrão | Onde | Motivo |
 |---|---|---|
-| **Repository** | `repositories/inventory_repository.py` | Isola persistência (CSV/JSON hoje, SQLite amanhã se necessário) da lógica de negócio. `InventoryService` não sabe como os dados são salvos. |
-| **Strategy** | `repositories/report_writer.py` (`ReportWriter` Protocol, `CsvReportWriter`/`JsonReportWriter`) | Trocar/adicionar formato de saída sem tocar no `InventoryService`. Mesmo mecanismo será reaproveitado para templates de renomeação. |
+| **Repository** | `repositories/inventory_repository.py`, `repositories/rename_repository.py` | Isola persistência (CSV/JSON hoje, SQLite amanhã se necessário) da lógica de negócio. Os services não sabem como os dados são salvos. |
+| **Strategy** | `repositories/report_writer.py` (`ReportWriter` Protocol, `CsvReportWriter`/`JsonReportWriter`) | Trocar/adicionar formato de saída sem tocar no `InventoryService`. |
+| **Strategy (templates)** | `services/rename_template_service.py` | Templates de nome (`{Livro}_{Pagina}` etc.) usam `str.format()` do próprio Python — nenhum parser customizado. Trocar/adicionar um placeholder é mudar o dicionário de valores, não reescrever um motor de template. |
 | **Factory / Registry** | `modules/menu.py` (`MenuOption` + lista) | Cada opção do menu é registrada como `(número, rótulo, callable)` em `main.py`. Adicionar um módulo novo é uma linha, sem tocar no loop do menu (Open/Closed). |
 | **Protocol + stub** | `services/ocr_engine.py` (`OcrEngine` Protocol + `UnavailableOcrEngine`) | Satisfaz o requisito "não implementar OCR agora, só preparar a arquitetura". Qualquer módulo futuro programa contra a interface, não contra uma biblioteca específica. |
 | **Dependency Injection manual** | `main.py` | Sem framework de DI/ORM — over-engineering para este porte (viola KISS). Construtores explícitos bastam e mantêm o código rastreável. |
@@ -40,6 +41,7 @@ models/        dataclasses + enums puros. Zero dependências de outras camadas.
 - `models/pdf_record.py` — `PdfStatus` (enum: OK, Corrompido, Protegido, Vazio, ErroLeitura) e `PdfRecord` (um registro de inventário por arquivo).
 - `models/inventory_stats.py` — `InventoryStats` (estatísticas agregadas de uma execução).
 - `models/config.py` — `AppConfig` (equivalente tipado do `config.json`).
+- `models/rename_plan.py` — `RenamePlanItem` (um item planejado do módulo de Renomeação: origem, livro, página, nome novo, destino, status).
 
 ## Fluxo de execução — módulo de Inventário
 
@@ -79,12 +81,44 @@ main.py → Menu → "1 - Inventario" → modules/inventory_module.py
    5. Resumo no console + logging em cada etapa relevante.
 ```
 
+## Fluxo de execução — módulo de Renomeação
+
+```
+main.py → Menu → "3 - Renomear PDFs" → modules/rename_module.py
+                                           │
+   1. InventoryRepository.load_all() → le reports/Inventario.json direto.
+      NAO reescaneia nada (e o payoff do "inventario permanente" da Fase 3).
+      Se vazio/inexistente → orienta a rodar o Inventario primeiro.
+   2. Separa os registros com "Livro" resolvido (via LivroPattern, no
+      Inventario) dos sem "Livro" - estes ultimos sao IGNORADOS do plano
+      (evita gerar "None_0001.pdf"), com contagem exibida ao usuario.
+   3. Pergunta o template (3 pre-definidos ou customizado, validado antes
+      de aceitar) e a pasta de destino.
+   4. Monta o plano (RenamePlanItem por arquivo):
+        ├─ Agrupa por "Livro", ordena por nome original dentro do grupo.
+        ├─ Pagina = indice sequencial (1, 2, 3...) dentro do grupo.
+        ├─ RenameTemplateService.render() monta o nome (str.format()).
+        └─ NamingService garante nome unico no destino (mesmo algoritmo
+           sequencial corrigido do CopiarPDFs.ps1 - nunca sobrescreve,
+           nem entre execucoes diferentes: reserva os nomes ja existentes
+           no destino antes de planejar os novos).
+   5. PRE-VISUALIZACAO (Fase 7): mostra uma amostra ANTES -> DEPOIS e pede
+      confirmacao [S]/[N]. Sem confirmacao, nada e copiado.
+   6. Copia cada arquivo (shutil.copy2, preserva metadados) para o
+      destino - os originais NUNCA sao tocados. Erro isolado por arquivo.
+   7. RenameRepository.save(plano) -> reports/Renomeacao_<timestamp>.csv
+      (rastreabilidade). Resumo no console.
+```
+
+**Limitação conhecida (aceita nesta versão)**: o módulo de Renomeação não tem checkpoint/retomada dedicados (diferente do Inventário). Reexecutar após uma interrupção recopia o que já tinha sido feito — protegido apenas pela regra de não-sobrescrita do `NamingService` (gera uma cópia com sufixo `(N)`, nunca corrompe nada, mas duplica trabalho). Aceitável porque copiar é rápido comparado ao Inventário (sem hash/parsing de PDF); reavaliar se acervos muito grandes tornarem isso perceptível.
+
 ## Ideias reaproveitadas do CopiarPDFs.ps1
 
 - Varredura iterativa (fila, não recursão) e tratamento de erro por item sem abortar o scan inteiro.
 - Confirmação antes de operações pesadas, resumo antes/depois, barra de progresso em texto.
 - `progresso.json` / retomada de execução → `ProgressRepository` equivalente.
 - **Parser de `config.json` defensivo**: o mesmo erro comum do PowerShell (colar caminho do Windows com barra simples, JSON inválido) se repete aqui — `ConfigRepository.load()` aplica a mesma correção automática (dobra barras invertidas "soltas", preservando escapes já válidos) com aviso claro, e sugere usar `/` nos caminhos.
+- **Resolução de colisão de nome sequencial**: `services/naming_service.py` é o port direto do `Get-NextAvailableName` do PowerShell, já com a correção que evita pular números (`(2), (3), (4)...` em vez de `(2), (4), (6)...`) — bug real encontrado e corrigido lá, replicado aqui de propósito.
 
 ## Riscos técnicos e mitigação
 
@@ -103,9 +137,9 @@ Um app CLI deste porte não justifica um framework de injeção de dependência 
 ## Roteiro (visão do produto, um módulo por vez)
 
 1. ✅ Fundação (config, logging, models, menu) + **Inventário** — completo e funcional.
-2. Cópia — hoje é uma ponte (`subprocess`) para o `CopiarPDFs.ps1`; um módulo nativo em Python é um passo futuro, não urgente.
-3. Renomeação — motor de templates configuráveis (`{Livro}_{Pagina}` etc.), reaproveitando o `ReportWriter`/Strategy já existente como padrão.
-4. Separação de páginas — detecta PDFs com mais de uma página (o Inventário já traz essa contagem pronta) e separa mantendo rastreabilidade.
+2. ✅ Cópia — ponte (`subprocess`) para o `CopiarPDFs.ps1`; um módulo nativo em Python é um passo futuro, não urgente.
+3. ✅ Renomeação — motor de templates configuráveis (`{Livro}_{Pagina}` etc.), agrupamento por Livro, pré-visualização + confirmação, CSV de rastreabilidade.
+4. Separação de páginas — detecta PDFs com mais de uma página (o Inventário já traz essa contagem pronta) e separa mantendo rastreabilidade. Deve reaproveitar `NamingService`/`RenameTemplateService`.
 5. União de PDFs.
 6. Auditoria — estende o Inventário com "sem texto" e "muito grande" (corrompido/protegido/vazio/duplicado já são cobertos pelo Inventário).
 7. Relatórios/estatísticas avançadas.

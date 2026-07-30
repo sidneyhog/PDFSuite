@@ -32,6 +32,9 @@ _TEMPLATE: dict[str, Any] = {
     "ProgressDir": "progress",
     "SaveProgressEveryNFiles": 100,
     "SaveProgressEverySeconds": 15,
+    "RenameDestino": None,
+    "RenamePaginaDigits": 4,
+    "RenameDataFormato": "%Y%m%d",
 }
 
 # Casa primeiro um par de escape JSON ja valido (mantendo-o intacto) - so o
@@ -126,6 +129,15 @@ class ConfigRepository:
         if not origem_path.is_absolute():
             origem_path = base_dir / origem_path
 
+        rename_destino = data.get("RenameDestino")
+        rename_destino_path = _resolve_dir(rename_destino, "") if rename_destino else None
+
+        rename_pagina_digits = int(data.get("RenamePaginaDigits", 4))
+        if rename_pagina_digits < 1:
+            raise ValueError(
+                f"Configuracao invalida: 'RenamePaginaDigits' deve ser no minimo 1 (valor atual: {rename_pagina_digits})."
+            )
+
         return AppConfig(
             origem=origem_path,
             filtro=filtro,
@@ -139,4 +151,7 @@ class ConfigRepository:
             progress_dir=_resolve_dir(data.get("ProgressDir"), "progress"),
             save_progress_every_n_files=int(data.get("SaveProgressEveryNFiles", 100)),
             save_progress_every_seconds=int(data.get("SaveProgressEverySeconds", 15)),
+            rename_destino=rename_destino_path,
+            rename_pagina_digits=rename_pagina_digits,
+            rename_data_formato=data.get("RenameDataFormato") or "%Y%m%d",
         )
