@@ -169,6 +169,11 @@ class EscrituraImportModule:
     # ---------------- exibicao ---------------- #
 
     def _descobrir_livros(self, origem: Path) -> list[tuple[int, Path]]:
+        # a origem pode apontar DIRETO para uma pasta 'livroNNNN'
+        m_direta = _RE_PASTA_LIVRO.match(origem.name)
+        if m_direta:
+            return [(int(m_direta.group(1)), origem)]
+
         achados: list[tuple[int, Path]] = []
         try:
             for item in origem.iterdir():
