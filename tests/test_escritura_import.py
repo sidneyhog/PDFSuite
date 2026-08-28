@@ -122,6 +122,34 @@ def test_planner_livro_que_nao_fecha_vira_revisar(tmp_path: Path) -> None:
     assert not plano.automatizavel
 
 
+def test_planner_roteia_anexo_orfao_para_a_folha_da_pasta(tmp_path: Path) -> None:
+    """f003 so tem anexo (a folha 3 esta dentro do folha_002.pdf, que tem 2 paginas)."""
+    cfg = _config(tmp_path / "out")
+    pasta = tmp_path / "livro9010"
+    _pdf(pasta / "livro9010_termo_abertura.pdf", 1)
+    _pdf(pasta / "f002" / "1_livro9010_folha_002.pdf", 2)       # folhas 2 e 3
+    _pdf(pasta / "f003" / "3_livro9010_folha_003.pdf", 1)       # anexo orfao -> folha 3
+    _pdf(pasta / "f004" / "1_livro9010_folha_004.pdf", 2)       # folhas 4 e 5
+    _pdf(pasta / "livro9010_termo_encerramento.pdf", 1)
+    livro = EscrituraScannerService().scan_livro(pasta)
+    assert livro.anexos_orfaos == {3: [pasta / "f003" / "3_livro9010_folha_003.pdf"]}
+
+    plano = _planejador(cfg).planejar(livro, cfg.escritura_destino)
+    assert plano.diagnostico == "ok"
+    assert len(plano.anexos) == 1
+    assert plano.anexos[0].folha_destino == 3
+    assert plano.anexos[0].caminho_destino.parent.name == "003"
+
+
+def test_scanner_avisa_termo_com_numero_de_outro_livro(tmp_path: Path) -> None:
+    pasta = tmp_path / "livro9011"
+    _pdf(pasta / "livro9010_termo_abertura.pdf", 1)             # numero errado no nome
+    _pdf(pasta / "f002" / "1_livro9011_folha_002.pdf", 1)
+    livro = EscrituraScannerService().scan_livro(pasta)
+    assert livro.termo_abertura is not None
+    assert any("CONFERIR se e o termo certo" in a for a in livro.avisos)
+
+
 def test_planner_sem_termo_encerramento_avisa(tmp_path: Path) -> None:
     cfg = _config(tmp_path / "out")
     pasta = tmp_path / "livro9003"

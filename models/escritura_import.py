@@ -39,6 +39,7 @@ class LivroOrigem:
     termo_abertura: Optional[Path]
     termo_encerramento: Optional[Path]
     folhas: list[ArquivoFolhaOrigem]    # ordenado por folha_nome_ini, depois pasta, depois nome
+    anexos_orfaos: dict[int, list[Path]] = field(default_factory=dict)   # {numero_fXXX: [anexos]} sem folha na mesma pasta
     ignorados: list[Path] = field(default_factory=list)   # Thumbs.db, .lnk, nao classificaveis
     avisos: list[str] = field(default_factory=list)
 

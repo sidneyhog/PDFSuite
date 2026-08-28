@@ -91,6 +91,27 @@ class EscrituraPlannerService:
         ultima_conteudo = proxima - 1
         total_conteudo = max(0, ultima_conteudo - 1)   # folhas 2..ultima
 
+        # anexos orfaos (pasta 'fXXX' so com anexos): vao para a folha XXX se ela existir
+        folhas_existentes = {f.numero for f in folhas}
+        orfaos_perdidos = 0
+        orfaos_roteados = 0
+        for num_pasta, lista in sorted(livro.anexos_orfaos.items()):
+            if num_pasta in folhas_existentes:
+                for origem_anexo in lista:
+                    anexos.append(AnexoDestino(origem=origem_anexo, folha_destino=num_pasta))
+                orfaos_roteados += len(lista)
+            else:
+                orfaos_perdidos += len(lista)
+        if orfaos_roteados:
+            avisos.append(
+                f"{orfaos_roteados} anexo(s) estavam numa pasta 'fXXX' sem arquivo de folha - "
+                "roteados para a folha de mesmo numero da pasta (conferir)"
+            )
+        if orfaos_perdidos:
+            avisos.append(
+                f"{orfaos_perdidos} anexo(s) em pastas 'fXXX' sem folha correspondente no plano - NAO importados"
+            )
+
         # --- folha final: termo de encerramento ---
         if livro.termo_encerramento is not None:
             if ultima_conteudo >= self._total:

@@ -75,8 +75,10 @@ class EscrituraScannerService:
             pasta_scan = self._pasta_scan(arquivo, pasta_livro)
             classe = _classificar(arquivo.name)
             if classe == "termo_abertura":
+                self._conferir_numero_do_termo(arquivo, numero, avisos, "abertura")
                 termo_abertura = self._preferir(termo_abertura, arquivo, avisos, "abertura")
             elif classe == "termo_encerramento":
+                self._conferir_numero_do_termo(arquivo, numero, avisos, "encerramento")
                 termo_encerramento = self._preferir(termo_encerramento, arquivo, avisos, "encerramento")
             elif classe == "folha":
                 folhas_por_pasta.setdefault(pasta_scan, []).append(arquivo)
@@ -101,10 +103,16 @@ class EscrituraScannerService:
                     anexos=anexos if indice == 0 else [],
                 ))
 
-        # anexos em pastas sem nenhuma folha (orfaos) - registrados como aviso
+        # anexos em pastas sem nenhuma folha na mesma pasta - o planejador tenta
+        # rotea-los para a folha de numero igual ao da pasta 'fXXX'
+        anexos_orfaos: dict[int, list[Path]] = {}
         for pasta_scan, orfaos in anexos_por_pasta.items():
-            avisos.append(f"pasta '{pasta_scan}' tem {len(orfaos)} anexo(s) sem folha correspondente")
-            ignorados.extend(orfaos)
+            num = self._numero_pasta(pasta_scan)
+            if num < 9999:
+                anexos_orfaos[num] = sorted(orfaos, key=lambda p: p.name.lower())
+            else:
+                avisos.append(f"pasta '{pasta_scan}' tem {len(orfaos)} anexo(s) sem folha e sem numero")
+                ignorados.extend(orfaos)
 
         folhas.sort(key=lambda f: (
             f.folha_nome_ini if f.folha_nome_ini is not None else 9999,
@@ -118,6 +126,7 @@ class EscrituraScannerService:
             termo_abertura=termo_abertura,
             termo_encerramento=termo_encerramento,
             folhas=folhas,
+            anexos_orfaos=anexos_orfaos,
             ignorados=ignorados,
             avisos=avisos,
         )
@@ -159,6 +168,15 @@ class EscrituraScannerService:
         if not m:
             raise ValueError(f"Pasta de livro sem numero no nome: '{nome_pasta}'")
         return int(m.group(0))
+
+    @staticmethod
+    def _conferir_numero_do_termo(arquivo: Path, numero_livro: int, avisos: list[str], rotulo: str) -> None:
+        m = re.search(r"livro[ _]?(\d+)", arquivo.name, re.IGNORECASE)
+        if m and int(m.group(1)) != numero_livro:
+            avisos.append(
+                f"termo de {rotulo} '{arquivo.name}' tem numero {m.group(1)} mas esta na pasta "
+                f"do livro {numero_livro} - CONFERIR se e o termo certo"
+            )
 
     @staticmethod
     def _preferir(atual: Optional[Path], novo: Path, avisos: list[str], rotulo: str) -> Path:
