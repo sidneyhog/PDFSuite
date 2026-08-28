@@ -24,10 +24,12 @@ from repositories.config_repository import ConfigRepository
 from repositories.inventory_repository import InventoryRepository
 from repositories.progress_repository import ProgressRepository
 from repositories.rename_repository import RenameRepository
+from repositories.split_repository import SplitRepository
 from services.hasher_service import HasherService
 from services.inventory_service import InventoryService
 from services.logging_setup import setup_logging
 from services.pdf_inspector_service import PdfInspectorService
+from services.pdf_splitter_service import PdfSplitterService
 from services.rename_template_service import RenameTemplateService
 from services.scanner_service import ScannerService
 
@@ -73,12 +75,17 @@ def main() -> int:
     rename_template_service = RenameTemplateService()
     rename_module = RenameModule(config, inventory_repository, rename_repository, rename_template_service)
 
+    split_repository = SplitRepository(config.reports_dir)
+    split_module = SplitModule(
+        config, inventory_repository, split_repository, rename_template_service, PdfSplitterService()
+    )
+
     menu = Menu(
         [
             MenuOption("1", "Inventario", inventory_module.run),
             MenuOption("2", "Copiar PDFs", copy_module.run),
             MenuOption("3", "Renomear PDFs", rename_module.run),
-            MenuOption("4", "Separar paginas", SplitModule().run),
+            MenuOption("4", "Separar paginas", split_module.run),
             MenuOption("5", "Unir PDFs", MergeModule().run),
             MenuOption("6", "Auditoria", AuditModule().run),
             MenuOption("7", "Relatorios", ReportModule().run),

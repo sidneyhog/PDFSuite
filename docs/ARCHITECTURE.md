@@ -15,10 +15,11 @@ modules/       controllers finos: menu + 1 arquivo por funcionalidade.
                Leem input do usuário, mostram output, delegam tudo.
      │
 services/      regra de negócio pura, testável, sem I/O de console.
-     │         (Scanner, Hasher, PdfInspector, Inventory, OCR-stub, Logging)
+     │         (Scanner, Hasher, PdfInspector, Inventory, RenameTemplate,
+     │          Naming, PdfSplitter, OCR-stub, Logging)
      │
-repositories/  persistência: Inventory (CSV+JSON), Config, Progress.
-     │         Implementam a única parte "suja" (I/O de arquivo).
+repositories/  persistência: Inventory (CSV+JSON), Config, Progress,
+     │         Rename, Split. A única parte "suja" (I/O de arquivo).
      │
 models/        dataclasses + enums puros. Zero dependências de outras camadas.
 ```
@@ -31,7 +32,7 @@ models/        dataclasses + enums puros. Zero dependências de outras camadas.
 |---|---|---|
 | **Repository** | `repositories/inventory_repository.py`, `repositories/rename_repository.py` | Isola persistência (CSV/JSON hoje, SQLite amanhã se necessário) da lógica de negócio. Os services não sabem como os dados são salvos. |
 | **Strategy** | `repositories/report_writer.py` (`ReportWriter` Protocol, `CsvReportWriter`/`JsonReportWriter`) | Trocar/adicionar formato de saída sem tocar no `InventoryService`. |
-| **Strategy (templates)** | `services/rename_template_service.py` | Templates de nome (`{Livro}_{Pagina}` etc.) usam `str.format()` do próprio Python — nenhum parser customizado. Trocar/adicionar um placeholder é mudar o dicionário de valores, não reescrever um motor de template. |
+| **Strategy (templates)** | `services/rename_template_service.py` | Templates de nome (`{Livro}_{Pagina}`, `{NomeOriginal}_p{Pagina}` etc.) usam `str.format()` do próprio Python — nenhum parser customizado. Trocar/adicionar um placeholder é mudar o dicionário de valores, não reescrever um motor de template. **Compartilhado** pelos módulos de Renomeação e de Separação (este último usa `{Pagina}`/`{TotalPaginas}` como número físico da página). |
 | **Factory / Registry** | `modules/menu.py` (`MenuOption` + lista) | Cada opção do menu é registrada como `(número, rótulo, callable)` em `main.py`. Adicionar um módulo novo é uma linha, sem tocar no loop do menu (Open/Closed). |
 | **Protocol + stub** | `services/ocr_engine.py` (`OcrEngine` Protocol + `UnavailableOcrEngine`) | Satisfaz o requisito "não implementar OCR agora, só preparar a arquitetura". Qualquer módulo futuro programa contra a interface, não contra uma biblioteca específica. |
 | **Dependency Injection manual** | `main.py` | Sem framework de DI/ORM — over-engineering para este porte (viola KISS). Construtores explícitos bastam e mantêm o código rastreável. |
@@ -42,6 +43,7 @@ models/        dataclasses + enums puros. Zero dependências de outras camadas.
 - `models/inventory_stats.py` — `InventoryStats` (estatísticas agregadas de uma execução).
 - `models/config.py` — `AppConfig` (equivalente tipado do `config.json`).
 - `models/rename_plan.py` — `RenamePlanItem` (um item planejado do módulo de Renomeação: origem, livro, página, nome novo, destino, status).
+- `models/split_plan.py` — `SplitPlanItem` (um item planejado do módulo de Separação: **uma página** a extrair — origem, livro, total de páginas, número da página, nome novo, destino, status).
 
 ## Fluxo de execução — módulo de Inventário
 
@@ -110,6 +112,40 @@ main.py → Menu → "3 - Renomear PDFs" → modules/rename_module.py
       (rastreabilidade). Resumo no console.
 ```
 
+## Fluxo de execução — módulo de Separação de páginas
+
+```
+main.py → Menu → "4 - Separar paginas" → modules/split_module.py
+                                            │
+   1. InventoryRepository.load_all() → le reports/Inventario.json direto.
+      NAO reescaneia nem reabre PDF nenhum (a contagem de paginas ja veio
+      do Inventario - payoff do "inventario permanente").
+   2. Filtra os registros com status OK e paginas > 1. Arquivos de 1
+      pagina / corrompidos / protegidos / vazios ficam de fora, com
+      contagem exibida ao usuario.
+   3. Pergunta o template (3 pre-definidos ou customizado, validado) e a
+      pasta de destino (padrao: SplitDestino do config.json).
+   4. Monta o plano (1 SplitPlanItem por PAGINA):
+        ├─ Para cada arquivo, ordena por caminho; para cada pagina 1..N:
+        ├─ RenameTemplateService.render(..., total_paginas=N) monta o nome
+        │   ({Pagina} = numero fisico da pagina; {TotalPaginas} = N).
+        └─ NamingService garante nome unico no destino (reserva os ja
+           existentes antes - nunca sobrescreve, nem entre execucoes).
+   5. PRE-VISUALIZACAO: amostra "arquivo.pdf (pag 2/5) -> arquivo_p0002.pdf"
+      + contagens + confirmacao [S]/[N]. Sem confirmacao, nada e gerado.
+   6. PdfSplitterService.split(origem, [(pagina, destino), ...]): abre cada
+      PDF de origem UMA vez (pypdf.PdfReader), grava cada pagina como um
+      novo PdfWriter de 1 pagina. Erro isolado por pagina E por arquivo -
+      um PDF que nem abre marca todas as suas paginas como ErroSeparacao
+      sem derrubar os demais. Os originais NUNCA sao tocados.
+   7. SplitRepository.save(plano) -> reports/Separacao_<timestamp>.csv
+      (origem + numero da pagina -> novo arquivo + status). Resumo no console.
+```
+
+Toda a manipulação de PDF (pypdf) fica em `PdfSplitterService` — o módulo só orquestra (mesma divisão de `PdfInspectorService` no Inventário). `RenameTemplateService` e `NamingService` são reaproveitados sem alteração de comportamento para a Renomeação (o parâmetro `total_paginas` é opcional e default `0`).
+
+**Limitação conhecida (aceita nesta versão)**: assim como a Renomeação, a Separação não tem checkpoint/retomada dedicados — reexecutar após uma interrupção regera o que já tinha sido feito, protegido apenas pela regra de não-sobrescrita do `NamingService` (gera cópias com sufixo `(N)`).
+
 **Limitação conhecida (aceita nesta versão)**: o módulo de Renomeação não tem checkpoint/retomada dedicados (diferente do Inventário). Reexecutar após uma interrupção recopia o que já tinha sido feito — protegido apenas pela regra de não-sobrescrita do `NamingService` (gera uma cópia com sufixo `(N)`, nunca corrompe nada, mas duplica trabalho). Aceitável porque copiar é rápido comparado ao Inventário (sem hash/parsing de PDF); reavaliar se acervos muito grandes tornarem isso perceptível.
 
 ## Ideias reaproveitadas do CopiarPDFs.ps1
@@ -139,7 +175,7 @@ Um app CLI deste porte não justifica um framework de injeção de dependência 
 1. ✅ Fundação (config, logging, models, menu) + **Inventário** — completo e funcional.
 2. ✅ Cópia — ponte (`subprocess`) para o `CopiarPDFs.ps1`; um módulo nativo em Python é um passo futuro, não urgente.
 3. ✅ Renomeação — motor de templates configuráveis (`{Livro}_{Pagina}` etc.), agrupamento por Livro, pré-visualização + confirmação, CSV de rastreabilidade.
-4. Separação de páginas — detecta PDFs com mais de uma página (o Inventário já traz essa contagem pronta) e separa mantendo rastreabilidade. Deve reaproveitar `NamingService`/`RenameTemplateService`.
+4. ✅ Separação de páginas — quebra PDFs multipágina em arquivos de 1 página, template configurável (reaproveita `NamingService`/`RenameTemplateService`), pré-visualização + confirmação, CSV de rastreabilidade. Manipulação de PDF isolada em `PdfSplitterService`.
 5. União de PDFs.
 6. Auditoria — estende o Inventário com "sem texto" e "muito grande" (corrompido/protegido/vazio/duplicado já são cobertos pelo Inventário).
 7. Relatórios/estatísticas avançadas.

@@ -13,7 +13,7 @@ O `CopiarPDFs.ps1` (PowerShell) continua existindo, intocado, como ferramenta le
 | 1 | Inventário | ✅ Completo e funcional |
 | 2 | Copiar PDFs | ✅ Ponte para o `CopiarPDFs.ps1` |
 | 3 | Renomear PDFs | ✅ Completo e funcional |
-| 4 | Separar páginas | 🔜 Próxima sessão |
+| 4 | Separar páginas | ✅ Completo e funcional |
 | 5 | Unir PDFs | 🔜 Próxima sessão |
 | 6 | Auditoria | 🔜 Próxima sessão |
 | 7 | Relatórios | 🔜 Próxima sessão |
@@ -59,7 +59,8 @@ Edite [`config.json`](config.json):
   "SaveProgressEverySeconds": 15,
   "RenameDestino": null,
   "RenamePaginaDigits": 4,
-  "RenameDataFormato": "%Y%m%d"
+  "RenameDataFormato": "%Y%m%d",
+  "SplitDestino": null
 }
 ```
 
@@ -73,8 +74,9 @@ Edite [`config.json`](config.json):
 | `PowerShellScriptPath` / `PowerShellConfigPath` | Caminhos usados pela opção "Copiar PDFs" para invocar o `CopiarPDFs.ps1`. |
 | `ReportsDir` / `LogsDir` / `ProgressDir` | Pastas de saída (relativas ao `config.json` se não forem absolutas). |
 | `RenameDestino` | Pasta padrão sugerida no módulo de Renomeação (editável na hora; pode ficar `null`). |
-| `RenamePaginaDigits` | Quantidade de dígitos do placeholder `{Pagina}` nos templates de renomeação (padrão 4 → `0001`). |
+| `RenamePaginaDigits` | Quantidade de dígitos dos placeholders `{Pagina}` / `{TotalPaginas}` nos templates de Renomeação **e de Separação** (padrão 4 → `0001`). |
 | `RenameDataFormato` | Formato `strftime` do placeholder `{Data}` nos templates (padrão `%Y%m%d` → `20260730`). |
+| `SplitDestino` | Pasta padrão sugerida no módulo de Separação de páginas (editável na hora; pode ficar `null`). |
 
 ### Atenção com barras invertidas em JSON
 
@@ -121,6 +123,24 @@ Placeholders disponíveis: `{Livro}` (extraído pelo `LivroPattern` do Inventár
 
 Arquivos sem `Livro` identificado no Inventário são ignorados do plano (evita gerar `None_0001.pdf`) — o resumo mostra quantos foram ignorados. Colisão de nome no destino nunca sobrescreve: recebe sufixo `(2)`, `(3)`... como no `CopiarPDFs.ps1`. Cada execução grava `reports/Renomeacao_<timestamp>.csv` com a rastreabilidade completa (original → novo nome).
 
+## Módulo de Separação de páginas
+
+Quebra cada PDF **com mais de uma página** do Inventário em arquivos individuais de 1 página. Reaproveita o último Inventário salvo (a contagem de páginas já está lá — não reabre nada para descobrir) e, como a Renomeação, **nunca toca nos originais**: cada página é gravada como um novo arquivo na pasta de destino.
+
+Fluxo: escolha um template → escolha/confirme o destino → **pré-visualização** (`arquivo.pdf (pag 2/5) → arquivo_p0002.pdf`) → confirmação `[S]/[N]` → separação.
+
+Templates prontos (ou digite um customizado):
+
+| Template | Exemplo |
+|---|---|
+| `{NomeOriginal}_p{Pagina}` | `contrato_p0001.pdf` |
+| `{NomeOriginal}_{Pagina}-de-{TotalPaginas}` | `contrato_0001-de-0012.pdf` |
+| `{Livro}_{NomeOriginal}_{Pagina}` | `15_contrato_0001.pdf` |
+
+Placeholders: `{NomeOriginal}`, `{Pagina}` (número físico da página no PDF de origem, 1‑based, zero‑preenchido conforme `RenamePaginaDigits`), `{TotalPaginas}` (total de páginas do PDF de origem), `{Livro}` (se o Inventário identificou, via `LivroPattern` — senão fica vazio), `{Data}`, `{Extensao}`.
+
+Só entram no plano PDFs com status `OK` e mais de uma página. Arquivos de 1 página, corrompidos, protegidos ou vazios são ignorados — o resumo mostra as contagens. Colisão de nome no destino nunca sobrescreve (sufixo `(2)`, `(3)`...). Uma página problemática (ou um PDF inteiro que não abre) vira status `ErroSeparacao` no relatório, sem interromper o restante. Cada execução grava `reports/Separacao_<timestamp>.csv` com a rastreabilidade (origem + página → novo arquivo + status).
+
 ## Testes
 
 ```bash
@@ -144,8 +164,8 @@ PDFSuite/
 ├── modules/                # controllers finos (menu + 1 arquivo por funcionalidade)
 ├── models/                 # dataclasses/enums puros (PdfRecord, AppConfig, RenamePlanItem, ...)
 ├── services/                # regra de negocio (Scanner, Hasher, PdfInspector, Inventory,
-│                            #   RenameTemplate, Naming, OCR-stub)
-├── repositories/            # persistencia (Inventory, Config, Progress, Rename)
+│                            #   RenameTemplate, Naming, PdfSplitter, OCR-stub)
+├── repositories/            # persistencia (Inventory, Config, Progress, Rename, Split)
 ├── logs/ reports/ progress/ # saidas geradas em tempo de execucao
 ├── resources/                # reservado para recursos futuros (templates, icones de GUI)
 ├── docs/ARCHITECTURE.md      # arquitetura detalhada

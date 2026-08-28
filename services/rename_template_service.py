@@ -8,7 +8,9 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-PLACEHOLDERS_SUPORTADOS = ("Livro", "Pagina", "Data", "NomeOriginal", "Extensao")
+PLACEHOLDERS_SUPORTADOS = (
+    "Livro", "Pagina", "Data", "NomeOriginal", "Extensao", "TotalPaginas",
+)
 
 
 class TemplateInvalidoError(ValueError):
@@ -28,6 +30,7 @@ class RenameTemplateService:
         data_formato: str,
         nome_original: str,
         extensao: str,
+        total_paginas: int = 0,
     ) -> str:
         extensao_limpa = extensao.lstrip(".")
         valores = {
@@ -36,6 +39,9 @@ class RenameTemplateService:
             "Data": datetime.now().strftime(data_formato),
             "NomeOriginal": Path(nome_original).stem,
             "Extensao": extensao_limpa,
+            # 'TotalPaginas' so faz sentido no modulo de Separacao (quantas
+            # paginas o PDF de origem tinha); no de Renomeacao fica 0.
+            "TotalPaginas": str(total_paginas).zfill(pagina_digits),
         }
         try:
             nome_sem_extensao = template.format(**valores)

@@ -13,5 +13,6 @@
   "SaveProgressEverySeconds": 5,
   "RenameDestino": "renomeados_teste",
   "RenamePaginaDigits": 4,
-  "RenameDataFormato": "%Y%m%d"
+  "RenameDataFormato": "%Y%m%d",
+  "SplitDestino": "separados_teste"
 }

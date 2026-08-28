@@ -13,5 +13,6 @@
   "SaveProgressEverySeconds": 15,
   "RenameDestino": null,
   "RenamePaginaDigits": 4,
-  "RenameDataFormato": "%Y%m%d"
+  "RenameDataFormato": "%Y%m%d",
+  "SplitDestino": null
 }

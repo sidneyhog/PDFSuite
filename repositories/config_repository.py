@@ -35,6 +35,7 @@ _TEMPLATE: dict[str, Any] = {
     "RenameDestino": None,
     "RenamePaginaDigits": 4,
     "RenameDataFormato": "%Y%m%d",
+    "SplitDestino": None,
 }
 
 # Casa primeiro um par de escape JSON ja valido (mantendo-o intacto) - so o
@@ -132,6 +133,9 @@ class ConfigRepository:
         rename_destino = data.get("RenameDestino")
         rename_destino_path = _resolve_dir(rename_destino, "") if rename_destino else None
 
+        split_destino = data.get("SplitDestino")
+        split_destino_path = _resolve_dir(split_destino, "") if split_destino else None
+
         rename_pagina_digits = int(data.get("RenamePaginaDigits", 4))
         if rename_pagina_digits < 1:
             raise ValueError(
@@ -154,4 +158,5 @@ class ConfigRepository:
             rename_destino=rename_destino_path,
             rename_pagina_digits=rename_pagina_digits,
             rename_data_formato=data.get("RenameDataFormato") or "%Y%m%d",
+            split_destino=split_destino_path,
         )

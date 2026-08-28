@@ -29,3 +29,4 @@ class AppConfig:
     rename_destino: Optional[Path] = None
     rename_pagina_digits: int = 4
     rename_data_formato: str = "%Y%m%d"
+    split_destino: Optional[Path] = None
