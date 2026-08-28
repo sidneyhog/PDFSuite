@@ -9,6 +9,7 @@ Os arquivos de origem nunca sao tocados.
 """
 from __future__ import annotations
 
+import csv
 import logging
 import re
 from datetime import datetime
@@ -46,8 +47,31 @@ class EscrituraImportModule:
         self._template_service = template_service
         self._inspector = inspector or PdfInspectorService()
         self._importer = importer or EscrituraImporterService()
+        self._cache_paginas = self._carregar_cache_paginas(config.escritura_paginas_cache)
+
+    @staticmethod
+    def _carregar_cache_paginas(caminho: Optional[Path]) -> dict[str, int]:
+        """Le um CSV 'Caminho;...;PaginasPDF' (saida da fase 2) para evitar
+        reabrir cada PDF so para contar paginas. Chave = caminho em minusculas.
+        """
+        if caminho is None or not caminho.exists():
+            return {}
+        cache: dict[str, int] = {}
+        try:
+            with open(caminho, encoding="utf-8-sig", newline="") as arquivo:
+                for linha in csv.DictReader(arquivo, delimiter=";"):
+                    valor = (linha.get("PaginasPDF") or "").strip()
+                    if valor.isdigit():
+                        cache[(linha.get("Caminho") or "").strip().lower()] = int(valor)
+        except OSError as erro:
+            logger.warning("Falha ao ler cache de paginas '%s': %s", caminho, erro)
+        if cache:
+            logger.info("Cache de paginas: %d arquivos carregados de '%s'.", len(cache), caminho)
+        return cache
 
     def run(self) -> None:
+        if self._cache_paginas:
+            print(f"\nCache de paginas ativo: {len(self._cache_paginas)} arquivos (fase 2).")
         origem = self._perguntar_pasta("origem", self._config.escritura_origem)
         if origem is None:
             return
@@ -81,6 +105,14 @@ class EscrituraImportModule:
                 "Processar apenas os livros automatizaveis (que fecham 400)? "
                 "[S] Sim  [N] Tambem os que precisam de revisao: ", padrao=True
             )
+        # com muitos livros, so 1 linha por livro (o detalhe fica no CSV-resumo)
+        compacto = len(livros) > 6
+
+        if not self._cache_paginas and len(livros) > 3 and dry_run:
+            print(
+                "\n(AVISO: sem cache de paginas - vou abrir cada arquivo de folha pela rede.\n"
+                " Para acelerar, aponte 'EscrituraPaginasCache' no config.json para o CSV da fase 2.)\n"
+            )
 
         concluidos = self._repository.concluidos()
         planos: list[LivroPlano] = []
@@ -98,7 +130,10 @@ class EscrituraImportModule:
             livro_origem = self._scanner.scan_livro(pasta)
             plano = planejador.planejar(livro_origem, destino)
             planos.append(plano)
-            self._mostrar_plano(plano)
+            if compacto:
+                self._mostrar_plano_compacto(plano)
+            else:
+                self._mostrar_plano(plano)
 
             if dry_run:
                 continue
@@ -122,6 +157,9 @@ class EscrituraImportModule:
     # ---------------- contagem de paginas ---------------- #
 
     def _contar_paginas(self, caminho: Path) -> int:
+        do_cache = self._cache_paginas.get(str(caminho).lower())
+        if do_cache is not None:
+            return do_cache
         _status, paginas, _obs = self._inspector.inspect(caminho)
         return paginas or 0
 
@@ -185,6 +223,16 @@ class EscrituraImportModule:
         except OSError as erro:
             logger.error("Falha ao listar '%s': %s", origem, erro)
         return sorted(achados)
+
+    @staticmethod
+    def _mostrar_plano_compacto(plano: LivroPlano) -> None:
+        marca = {"ok": "OK  ", "revisar": "REV ", "manual": "MAN ",
+                 "incompleto": "INC ", "vazio": "VAZ "}.get(plano.diagnostico, "??? ")
+        extra = f"  {len(plano.avisos)} aviso(s)" if plano.avisos else ""
+        print(
+            f"  [{marca}] livro {plano.numero}: {plano.total_folhas_conteudo} folhas de conteudo "
+            f"(termina em {plano.ultima_folha_conteudo}), {len(plano.anexos)} anexos{extra}"
+        )
 
     def _mostrar_plano(self, plano: LivroPlano) -> None:
         print(f"\n--- Livro {plano.numero}  [{plano.diagnostico.upper()}] ---")

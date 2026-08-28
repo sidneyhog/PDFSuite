@@ -19,5 +19,6 @@
   "EscrituraDestino": null,
   "EscrituraNomeTemplate": "{Livro}_folha_{Pagina}",
   "EscrituraFolhaDigitos": 3,
-  "EscrituraFolhasPorLivro": 400
+  "EscrituraFolhasPorLivro": 400,
+  "EscrituraPaginasCache": null
 }

@@ -35,3 +35,4 @@ class AppConfig:
     escritura_nome_template: str = "{Livro}_folha_{Pagina}"
     escritura_folha_digitos: int = 3
     escritura_folhas_por_livro: int = 400
+    escritura_paginas_cache: Optional[Path] = None

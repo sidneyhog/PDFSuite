@@ -41,6 +41,7 @@ _TEMPLATE: dict[str, Any] = {
     "EscrituraNomeTemplate": "{Livro}_folha_{Pagina}",
     "EscrituraFolhaDigitos": 3,
     "EscrituraFolhasPorLivro": 400,
+    "EscrituraPaginasCache": None,
 }
 
 # Casa primeiro um par de escape JSON ja valido (mantendo-o intacto) - so o
@@ -157,6 +158,7 @@ class ConfigRepository:
                 f"Configuracao invalida: 'EscrituraFolhasPorLivro' deve ser no minimo 3 "
                 f"(valor atual: {escritura_folhas_por_livro})."
             )
+        escritura_paginas_cache = data.get("EscrituraPaginasCache")
 
         rename_pagina_digits = int(data.get("RenamePaginaDigits", 4))
         if rename_pagina_digits < 1:
@@ -186,4 +188,5 @@ class ConfigRepository:
             escritura_nome_template=data.get("EscrituraNomeTemplate") or "{Livro}_folha_{Pagina}",
             escritura_folha_digitos=escritura_folha_digitos,
             escritura_folhas_por_livro=escritura_folhas_por_livro,
+            escritura_paginas_cache=Path(escritura_paginas_cache) if escritura_paginas_cache else None,
         )

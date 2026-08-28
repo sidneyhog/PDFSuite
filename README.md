@@ -87,6 +87,7 @@ Edite [`config.json`](config.json):
 | `EscrituraNomeTemplate` | Template do nome do arquivo de folha no destino. Placeholders: `{Livro}`, `{Pagina}` (nº da folha). Padrão `{Livro}_folha_{Pagina}`. |
 | `EscrituraFolhaDigitos` | Dígitos do nº da folha na pasta e no nome (padrão 3 → `002`). |
 | `EscrituraFolhasPorLivro` | Total de folhas por livro, incluindo os dois termos (padrão 400). |
+| `EscrituraPaginasCache` | (Opcional) CSV `Caminho;PaginasPDF` com a contagem de páginas já feita (ex.: saída da fase 2). Se informado, o módulo não reabre cada PDF só para contar — um dry-run sobre todos os livros fica quase instantâneo. |
 
 ### Atenção com barras invertidas em JSON
 

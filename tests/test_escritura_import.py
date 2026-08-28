@@ -150,6 +150,34 @@ def test_scanner_avisa_termo_com_numero_de_outro_livro(tmp_path: Path) -> None:
     assert any("CONFERIR se e o termo certo" in a for a in livro.avisos)
 
 
+def test_modulo_usa_cache_de_paginas_sem_abrir_pdf(tmp_path: Path, monkeypatch) -> None:
+    from models.escritura_import import LivroOrigem
+    from modules.escritura_import_module import EscrituraImportModule
+    from repositories.escritura_import_repository import EscrituraImportRepository
+
+    pasta = _livro_padrao(tmp_path)
+    cache_csv = tmp_path / "paginas.csv"
+    # diz que o folha_002 tem 4 paginas (o PDF real tem 2) - o modulo deve confiar no cache
+    real002 = pasta / "f002" / "1_livro9001_folha_002.pdf"
+    cache_csv.write_text(
+        "Caminho;PaginasPDF\n"
+        f"{real002};4\n"
+        f"{pasta / 'f004' / '1_livro9001_folha_004.pdf'};1\n"
+        f"{pasta / 'f005' / '1_livro9001_folha_005.pdf'};1\n",
+        encoding="utf-8-sig",
+    )
+    cfg = _config(tmp_path / "out")
+    object.__setattr__(cfg, "escritura_paginas_cache", cache_csv)
+
+    mod = EscrituraImportModule(
+        cfg, EscrituraScannerService(),
+        EscrituraImportRepository(tmp_path / "rep", tmp_path / "prog"),
+        RenameTemplateService(),
+    )
+    assert mod._contar_paginas(real002) == 4          # veio do cache, nao do PDF (que tem 2)
+    assert mod._contar_paginas(pasta / "f004" / "1_livro9001_folha_004.pdf") == 1
+
+
 def test_planner_sem_termo_encerramento_avisa(tmp_path: Path) -> None:
     cfg = _config(tmp_path / "out")
     pasta = tmp_path / "livro9003"
