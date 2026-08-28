@@ -42,6 +42,7 @@ _TEMPLATE: dict[str, Any] = {
     "EscrituraFolhaDigitos": 3,
     "EscrituraFolhasPorLivro": 400,
     "EscrituraPaginasCache": None,
+    "EscrituraAgruparPorDiagnostico": True,
 }
 
 # Casa primeiro um par de escape JSON ja valido (mantendo-o intacto) - so o
@@ -159,6 +160,7 @@ class ConfigRepository:
                 f"(valor atual: {escritura_folhas_por_livro})."
             )
         escritura_paginas_cache = data.get("EscrituraPaginasCache")
+        escritura_agrupar = bool(data.get("EscrituraAgruparPorDiagnostico", True))
 
         rename_pagina_digits = int(data.get("RenamePaginaDigits", 4))
         if rename_pagina_digits < 1:
@@ -189,4 +191,5 @@ class ConfigRepository:
             escritura_folha_digitos=escritura_folha_digitos,
             escritura_folhas_por_livro=escritura_folhas_por_livro,
             escritura_paginas_cache=Path(escritura_paginas_cache) if escritura_paginas_cache else None,
+            escritura_agrupar_por_diagnostico=escritura_agrupar,
         )

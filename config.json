@@ -20,5 +20,6 @@
   "EscrituraNomeTemplate": "{Livro}_folha_{Pagina}",
   "EscrituraFolhaDigitos": 3,
   "EscrituraFolhasPorLivro": 400,
-  "EscrituraPaginasCache": null
+  "EscrituraPaginasCache": null,
+  "EscrituraAgruparPorDiagnostico": true
 }

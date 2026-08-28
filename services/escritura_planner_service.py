@@ -29,15 +29,16 @@ class EscrituraPlannerService:
         contar_paginas: Callable[[Path], int],
         nome_destino: Callable[[int, int], str],
         folhas_por_livro: int = FOLHAS_POR_LIVRO_PADRAO,
+        agrupar_por_diagnostico: bool = False,
     ) -> None:
         self._contar_paginas = contar_paginas
         self._nome_destino = nome_destino          # (numero_livro, numero_folha) -> nome do arquivo
         self._total = folhas_por_livro
         self._ultima_conteudo_esperada = folhas_por_livro - 1   # 399
         self._conteudo_esperado = folhas_por_livro - 2          # 398
+        self._agrupar = agrupar_por_diagnostico
 
     def planejar(self, livro: LivroOrigem, destino_raiz: Path) -> LivroPlano:
-        pasta_destino = destino_raiz / str(livro.numero)
         avisos = list(livro.avisos)
         folhas: list[FolhaDestino] = []
         anexos: list[AnexoDestino] = []
@@ -129,6 +130,11 @@ class EscrituraPlannerService:
             livro, ultima_conteudo, total_conteudo, max_paginas_arquivo
         )
 
+        # destino: opcionalmente agrupado por diagnostico, para o escrevente
+        # saber de cara o que e o que (destino/ok/1103/, destino/quase/1085/, ...)
+        pasta_destino = destino_raiz / diagnostico / str(livro.numero) if self._agrupar \
+            else destino_raiz / str(livro.numero)
+
         # nomes e caminhos de destino
         for f in folhas:
             f.nome_destino = self._nome_destino(livro.numero, f.numero)
@@ -157,9 +163,12 @@ class EscrituraPlannerService:
             return "vazio"
         if total_conteudo < self._conteudo_esperado * 0.9:
             return "incompleto"
-        if ultima_conteudo == self._ultima_conteudo_esperada and \
-                livro.termo_abertura and livro.termo_encerramento:
+        dif = ultima_conteudo - self._ultima_conteudo_esperada
+        tem_termos = bool(livro.termo_abertura and livro.termo_encerramento)
+        if dif == 0 and tem_termos:
             return "ok"
-        if max_paginas_arquivo >= 30 or ultima_conteudo - self._ultima_conteudo_esperada >= 50:
+        if max_paginas_arquivo >= 30 or dif >= 50:
             return "manual"
+        if abs(dif) <= 3:
+            return "quase"
         return "revisar"

@@ -102,8 +102,8 @@ class EscrituraImportModule:
         so_ok = True
         if not dry_run:
             so_ok = self._perguntar_sn(
-                "Processar apenas os livros automatizaveis (que fecham 400)? "
-                "[S] Sim  [N] Tambem os que precisam de revisao: ", padrao=True
+                "Processar apenas os livros que fecham 400 na mosca? "
+                "[S] Sim  [N] Tambem os 'quase' e 'revisar' (para o escrevente conferir): ", padrao=True
             )
         # com muitos livros, so 1 linha por livro (o detalhe fica no CSV-resumo)
         compacto = len(livros) > 6
@@ -120,6 +120,7 @@ class EscrituraImportModule:
             contar_paginas=self._contar_paginas,
             nome_destino=self._nome_destino,
             folhas_por_livro=self._config.escritura_folhas_por_livro,
+            agrupar_por_diagnostico=self._config.escritura_agrupar_por_diagnostico,
         )
 
         for numero, pasta in livros:
@@ -137,10 +138,10 @@ class EscrituraImportModule:
 
             if dry_run:
                 continue
-            if plano.diagnostico in ("incompleto", "vazio"):
-                print(f"    -> livro {numero} ({plano.diagnostico}) nao processado - precisa de digitalizacao/revisao.")
+            if plano.diagnostico in ("incompleto", "vazio", "manual"):
+                print(f"    -> livro {numero} ({plano.diagnostico}) nao processado - tratamento a parte.")
                 continue
-            if so_ok and not plano.automatizavel:
+            if so_ok and plano.diagnostico != "ok":
                 print(f"    -> livro {numero} ({plano.diagnostico}) nao processado nesta execucao (so automatizaveis).")
                 continue
 
@@ -226,8 +227,8 @@ class EscrituraImportModule:
 
     @staticmethod
     def _mostrar_plano_compacto(plano: LivroPlano) -> None:
-        marca = {"ok": "OK  ", "revisar": "REV ", "manual": "MAN ",
-                 "incompleto": "INC ", "vazio": "VAZ "}.get(plano.diagnostico, "??? ")
+        marca = {"ok": "OK   ", "quase": "QUASE", "revisar": "REV  ", "manual": "MAN  ",
+                 "incompleto": "INC  ", "vazio": "VAZ  "}.get(plano.diagnostico, "???  ")
         extra = f"  {len(plano.avisos)} aviso(s)" if plano.avisos else ""
         print(
             f"  [{marca}] livro {plano.numero}: {plano.total_folhas_conteudo} folhas de conteudo "
@@ -263,7 +264,7 @@ class EscrituraImportModule:
         print("\n" + "=" * 60)
         print(" RESUMO DA IMPORTACAO" + ("  (SIMULACAO)" if dry_run else ""))
         print("=" * 60)
-        for diag in ("ok", "revisar", "manual", "incompleto", "vazio"):
+        for diag in ("ok", "quase", "revisar", "manual", "incompleto", "vazio"):
             if diag in por_diag:
                 print(f"  {diag:<12}: {por_diag[diag]} livro(s)")
         print("=" * 60)

@@ -41,13 +41,14 @@ def _livro_padrao(raiz: Path, numero: int = 9001) -> Path:
     return pasta
 
 
-def _config(destino: Path) -> AppConfig:
+def _config(destino: Path, agrupar: bool = False) -> AppConfig:
     return AppConfig(
         origem=destino,
         escritura_destino=destino,
         escritura_nome_template="{Livro}_folha_{Pagina}",
         escritura_folha_digitos=3,
         escritura_folhas_por_livro=6,
+        escritura_agrupar_por_diagnostico=agrupar,
     )
 
 
@@ -65,6 +66,7 @@ def _planejador(cfg: AppConfig) -> EscrituraPlannerService:
         contar_paginas=lambda p: len(PdfReader(str(p)).pages),
         nome_destino=nome,
         folhas_por_livro=cfg.escritura_folhas_por_livro,
+        agrupar_por_diagnostico=cfg.escritura_agrupar_por_diagnostico,
     )
 
 
@@ -118,8 +120,18 @@ def test_planner_livro_que_nao_fecha_vira_revisar(tmp_path: Path) -> None:
     _pdf(pasta / "livro9002_termo_encerramento.pdf", 1)
     livro = EscrituraScannerService().scan_livro(pasta)
     plano = _planejador(cfg).planejar(livro, cfg.escritura_destino)
-    assert plano.diagnostico in ("revisar", "incompleto")
+    assert plano.diagnostico in ("quase", "revisar", "incompleto")
     assert not plano.automatizavel
+
+
+def test_planner_agrupa_saida_por_diagnostico(tmp_path: Path) -> None:
+    cfg = _config(tmp_path / "out", agrupar=True)
+    pasta = _livro_padrao(tmp_path)
+    livro = EscrituraScannerService().scan_livro(pasta)
+    plano = _planejador(cfg).planejar(livro, cfg.escritura_destino)
+    assert plano.diagnostico == "ok"
+    assert plano.pasta_destino == cfg.escritura_destino / "ok" / "9001"
+    assert plano.folhas[1].caminho_destino == cfg.escritura_destino / "ok" / "9001" / "002" / "9001_folha_002.pdf"
 
 
 def test_planner_roteia_anexo_orfao_para_a_folha_da_pasta(tmp_path: Path) -> None:

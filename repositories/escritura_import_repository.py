@@ -21,7 +21,7 @@ _COLUNAS_LIVRO = [
     "Origem", "PaginaOrigem", "Status", "Erro",
 ]
 _COLUNAS_RESUMO = [
-    "Livro", "Diagnostico", "FolhasConteudo", "UltimaFolha",
+    "Livro", "Diagnostico", "PastaSaida", "FolhasConteudo", "UltimaFolha",
     "FolhasGeradas", "AnexosCopiados", "Erros", "Avisos",
 ]
 
@@ -87,7 +87,8 @@ class EscrituraImportRepository:
                 erros = sum(1 for f in p.folhas if f.status == "Erro") + \
                     sum(1 for a in p.anexos if a.status == "Erro")
                 escritor.writerow([
-                    p.numero, p.diagnostico, p.total_folhas_conteudo, p.ultima_folha_conteudo,
+                    p.numero, p.diagnostico, str(p.pasta_destino),
+                    p.total_folhas_conteudo, p.ultima_folha_conteudo,
                     geradas, anexos_ok, erros, " | ".join(p.avisos),
                 ])
         logger.info("Resumo da importacao salvo em '%s'.", destino)

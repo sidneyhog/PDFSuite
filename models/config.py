@@ -36,3 +36,4 @@ class AppConfig:
     escritura_folha_digitos: int = 3
     escritura_folhas_por_livro: int = 400
     escritura_paginas_cache: Optional[Path] = None
+    escritura_agrupar_por_diagnostico: bool = True

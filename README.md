@@ -88,6 +88,7 @@ Edite [`config.json`](config.json):
 | `EscrituraFolhaDigitos` | Dígitos do nº da folha na pasta e no nome (padrão 3 → `002`). |
 | `EscrituraFolhasPorLivro` | Total de folhas por livro, incluindo os dois termos (padrão 400). |
 | `EscrituraPaginasCache` | (Opcional) CSV `Caminho;PaginasPDF` com a contagem de páginas já feita (ex.: saída da fase 2). Se informado, o módulo não reabre cada PDF só para contar — um dry-run sobre todos os livros fica quase instantâneo. |
+| `EscrituraAgruparPorDiagnostico` | Se `true` (padrão), a saída fica em `<destino>/<diagnóstico>/<livro>/…` (`ok/`, `quase/`, `revisar/`); se `false`, direto em `<destino>/<livro>/…`. |
 
 ### Atenção com barras invertidas em JSON
 
@@ -159,15 +160,15 @@ Normaliza os livros de escrituras digitalizados (`livroNNNN\fXXX\<prefixo>_livro
 Fluxo, **por livro**:
 
 1. **Varre** a pasta do livro (`EscrituraScannerService`) e classifica: folha (`1_` ou `livroNNNN_folha_NNN`), anexo (`2_`..`13_`, `pasta_`, `L.####,fls`), termo de abertura/encerramento, lixo (`Thumbs.db`, `.lnk`).
-2. **Conta as páginas** de cada arquivo de folha (`PdfInspectorService`) — é o que resolve as folhas que vêm com 2+ páginas num só PDF sem dizer no nome.
-3. **Planeja** (`EscrituraPlannerService`, lógica pura): folha 1 = termo de abertura, folhas 2..399 = as páginas dos arquivos de folha em ordem, folha 400 = termo de encerramento. Cada arquivo de folha com N páginas ocupa N folhas consecutivas; os anexos dele vão para a pasta da **primeira** dessas folhas.
-4. **Diagnóstico** por livro: `ok` (fecha exatamente 400), `revisar` (não fecha — precisa conferência), `manual` (folha + anexos escaneados no mesmo PDF), `incompleto`, `vazio`.
+2. **Conta as páginas** de cada arquivo de folha (`PdfInspectorService`, ou o cache da fase de análise — ver `EscrituraPaginasCache`) — é o que resolve as folhas que vêm com 2+ páginas num só PDF sem dizer no nome.
+3. **Planeja** (`EscrituraPlannerService`, lógica pura): folha 1 = termo de abertura, folhas 2..399 = as páginas dos arquivos de folha em ordem, folha 400 = termo de encerramento. Cada arquivo de folha com N páginas ocupa N folhas consecutivas; os anexos dele vão para a pasta da **primeira** dessas folhas. Anexo numa pasta `fXXX` sem arquivo de folha → vai para a folha XXX (com aviso).
+4. **Diagnóstico** por livro: `ok` (fecha 400 na mosca), `quase` (±1 a ±3 folhas — revisão rápida), `revisar` (diferença maior), `manual` (folha + anexos no mesmo PDF), `incompleto`, `vazio`.
 5. **Executa** (`EscrituraImporterService`): separa as páginas (reaproveita o `PdfSplitterService`) e copia os anexos (`NamingService` evita sobrescrita). **Os originais nunca são tocados.**
-6. Grava `reports/Importacao_livro<N>_<timestamp>.csv` (rastreabilidade folha a folha: origem → destino) e um `Importacao_resumo_<timestamp>.csv`.
+6. Grava `reports/Importacao_livro<N>_<timestamp>.csv` (rastreabilidade folha a folha) e um `Importacao_resumo_<timestamp>.csv`.
 
-Trabalha por **faixa de livros** (`1083-1100`), é **retomável** (livro concluído é pulado — `progress/escritura_importacao.json`) e tem **modo simulação** (mostra o plano completo sem gerar nada). Por padrão processa só os livros `ok`; pode incluir os `revisar`. Os `manual`/`incompleto`/`vazio` ficam sempre de fora.
+Trabalha por **faixa de livros** (`1083-1100`), é **retomável** (livro concluído é pulado — `progress/escritura_importacao.json`) e tem **modo simulação** (mostra o plano completo sem gerar nada). Por padrão a saída fica **agrupada por diagnóstico** (`<destino>/ok/1103/…`, `<destino>/quase/1085/…`) para o escrevente saber de imediato o que revisar. Processa só os `ok` por padrão; pode incluir os `quase` e `revisar`. Os `manual`/`incompleto`/`vazio` ficam sempre de fora.
 
-Configuração (`config.json`): `EscrituraOrigem`, `EscrituraDestino`, `EscrituraNomeTemplate` (padrão `{Livro}_folha_{Pagina}`), `EscrituraFolhaDigitos` (padrão 3 → `002`), `EscrituraFolhasPorLivro` (padrão 400).
+Configuração (`config.json`): `EscrituraOrigem`, `EscrituraDestino`, `EscrituraNomeTemplate` (padrão `{Livro}_folha_{Pagina}`), `EscrituraFolhaDigitos` (padrão 3 → `002`), `EscrituraFolhasPorLivro` (padrão 400), `EscrituraPaginasCache` (opcional), `EscrituraAgruparPorDiagnostico` (padrão `true`).
 
 ## Testes
 
