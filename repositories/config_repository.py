@@ -36,6 +36,11 @@ _TEMPLATE: dict[str, Any] = {
     "RenamePaginaDigits": 4,
     "RenameDataFormato": "%Y%m%d",
     "SplitDestino": None,
+    "EscrituraOrigem": None,
+    "EscrituraDestino": None,
+    "EscrituraNomeTemplate": "{Livro}_folha_{Pagina}",
+    "EscrituraFolhaDigitos": 3,
+    "EscrituraFolhasPorLivro": 400,
 }
 
 # Casa primeiro um par de escape JSON ja valido (mantendo-o intacto) - so o
@@ -136,6 +141,23 @@ class ConfigRepository:
         split_destino = data.get("SplitDestino")
         split_destino_path = _resolve_dir(split_destino, "") if split_destino else None
 
+        escritura_origem = data.get("EscrituraOrigem")
+        escritura_origem_path = _resolve_dir(escritura_origem, "") if escritura_origem else None
+        escritura_destino = data.get("EscrituraDestino")
+        escritura_destino_path = _resolve_dir(escritura_destino, "") if escritura_destino else None
+        escritura_folha_digitos = int(data.get("EscrituraFolhaDigitos", 3))
+        if escritura_folha_digitos < 1:
+            raise ValueError(
+                f"Configuracao invalida: 'EscrituraFolhaDigitos' deve ser no minimo 1 "
+                f"(valor atual: {escritura_folha_digitos})."
+            )
+        escritura_folhas_por_livro = int(data.get("EscrituraFolhasPorLivro", 400))
+        if escritura_folhas_por_livro < 3:
+            raise ValueError(
+                f"Configuracao invalida: 'EscrituraFolhasPorLivro' deve ser no minimo 3 "
+                f"(valor atual: {escritura_folhas_por_livro})."
+            )
+
         rename_pagina_digits = int(data.get("RenamePaginaDigits", 4))
         if rename_pagina_digits < 1:
             raise ValueError(
@@ -159,4 +181,9 @@ class ConfigRepository:
             rename_pagina_digits=rename_pagina_digits,
             rename_data_formato=data.get("RenameDataFormato") or "%Y%m%d",
             split_destino=split_destino_path,
+            escritura_origem=escritura_origem_path,
+            escritura_destino=escritura_destino_path,
+            escritura_nome_template=data.get("EscrituraNomeTemplate") or "{Livro}_folha_{Pagina}",
+            escritura_folha_digitos=escritura_folha_digitos,
+            escritura_folhas_por_livro=escritura_folhas_por_livro,
         )

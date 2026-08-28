@@ -14,5 +14,10 @@
   "RenameDestino": "renomeados_teste",
   "RenamePaginaDigits": 4,
   "RenameDataFormato": "%Y%m%d",
-  "SplitDestino": "separados_teste"
+  "SplitDestino": "separados_teste",
+  "EscrituraOrigem": null,
+  "EscrituraDestino": "escrituras_teste",
+  "EscrituraNomeTemplate": "{Livro}_folha_{Pagina}",
+  "EscrituraFolhaDigitos": 3,
+  "EscrituraFolhasPorLivro": 400
 }

@@ -14,5 +14,10 @@
   "RenameDestino": null,
   "RenamePaginaDigits": 4,
   "RenameDataFormato": "%Y%m%d",
-  "SplitDestino": null
+  "SplitDestino": null,
+  "EscrituraOrigem": null,
+  "EscrituraDestino": null,
+  "EscrituraNomeTemplate": "{Livro}_folha_{Pagina}",
+  "EscrituraFolhaDigitos": 3,
+  "EscrituraFolhasPorLivro": 400
 }

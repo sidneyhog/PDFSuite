@@ -30,3 +30,8 @@ class AppConfig:
     rename_pagina_digits: int = 4
     rename_data_formato: str = "%Y%m%d"
     split_destino: Optional[Path] = None
+    escritura_origem: Optional[Path] = None
+    escritura_destino: Optional[Path] = None
+    escritura_nome_template: str = "{Livro}_folha_{Pagina}"
+    escritura_folha_digitos: int = 3
+    escritura_folhas_por_livro: int = 400

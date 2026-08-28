@@ -18,6 +18,7 @@ O `CopiarPDFs.ps1` (PowerShell) continua existindo, intocado, como ferramenta le
 | 6 | Auditoria | 🔜 Próxima sessão |
 | 7 | Relatórios | 🔜 Próxima sessão |
 | 8 | Configurações | ✅ Exibição somente-leitura |
+| 9 | Preparar livros de escrituras para importação | ✅ Completo e funcional |
 | — | OCR | 🔜 Apenas interface preparada (`services/ocr_engine.py`) |
 
 ## Requisitos
@@ -60,7 +61,12 @@ Edite [`config.json`](config.json):
   "RenameDestino": null,
   "RenamePaginaDigits": 4,
   "RenameDataFormato": "%Y%m%d",
-  "SplitDestino": null
+  "SplitDestino": null,
+  "EscrituraOrigem": null,
+  "EscrituraDestino": null,
+  "EscrituraNomeTemplate": "{Livro}_folha_{Pagina}",
+  "EscrituraFolhaDigitos": 3,
+  "EscrituraFolhasPorLivro": 400
 }
 ```
 
@@ -77,6 +83,10 @@ Edite [`config.json`](config.json):
 | `RenamePaginaDigits` | Quantidade de dígitos dos placeholders `{Pagina}` / `{TotalPaginas}` nos templates de Renomeação **e de Separação** (padrão 4 → `0001`). |
 | `RenameDataFormato` | Formato `strftime` do placeholder `{Data}` nos templates (padrão `%Y%m%d` → `20260730`). |
 | `SplitDestino` | Pasta padrão sugerida no módulo de Separação de páginas (editável na hora; pode ficar `null`). |
+| `EscrituraOrigem` / `EscrituraDestino` | Pasta raiz dos livros de escrituras na origem (`...\2_Livros`) e a pasta local onde a estrutura normalizada é gerada. |
+| `EscrituraNomeTemplate` | Template do nome do arquivo de folha no destino. Placeholders: `{Livro}`, `{Pagina}` (nº da folha). Padrão `{Livro}_folha_{Pagina}`. |
+| `EscrituraFolhaDigitos` | Dígitos do nº da folha na pasta e no nome (padrão 3 → `002`). |
+| `EscrituraFolhasPorLivro` | Total de folhas por livro, incluindo os dois termos (padrão 400). |
 
 ### Atenção com barras invertidas em JSON
 
@@ -141,6 +151,23 @@ Placeholders: `{NomeOriginal}`, `{Pagina}` (número físico da página no PDF de
 
 Só entram no plano PDFs com status `OK` e mais de uma página. Arquivos de 1 página, corrompidos, protegidos ou vazios são ignorados — o resumo mostra as contagens. Colisão de nome no destino nunca sobrescreve (sufixo `(2)`, `(3)`...). Uma página problemática (ou um PDF inteiro que não abre) vira status `ErroSeparacao` no relatório, sem interromper o restante. Cada execução grava `reports/Separacao_<timestamp>.csv` com a rastreabilidade (origem + página → novo arquivo + status).
 
+## Módulo de Preparação de livros de escrituras
+
+Normaliza os livros de escrituras digitalizados (`livroNNNN\fXXX\<prefixo>_livroNNNN_folha_XXX.pdf` + anexos) para o formato que o sistema do cartório importa: **uma pasta por folha** (`001`..`400`), com um arquivo de folha em cada e os anexos junto da primeira folha correspondente. Módulo especializado neste acervo — não é uma ferramenta de PDF genérica.
+
+Fluxo, **por livro**:
+
+1. **Varre** a pasta do livro (`EscrituraScannerService`) e classifica: folha (`1_` ou `livroNNNN_folha_NNN`), anexo (`2_`..`13_`, `pasta_`, `L.####,fls`), termo de abertura/encerramento, lixo (`Thumbs.db`, `.lnk`).
+2. **Conta as páginas** de cada arquivo de folha (`PdfInspectorService`) — é o que resolve as folhas que vêm com 2+ páginas num só PDF sem dizer no nome.
+3. **Planeja** (`EscrituraPlannerService`, lógica pura): folha 1 = termo de abertura, folhas 2..399 = as páginas dos arquivos de folha em ordem, folha 400 = termo de encerramento. Cada arquivo de folha com N páginas ocupa N folhas consecutivas; os anexos dele vão para a pasta da **primeira** dessas folhas.
+4. **Diagnóstico** por livro: `ok` (fecha exatamente 400), `revisar` (não fecha — precisa conferência), `manual` (folha + anexos escaneados no mesmo PDF), `incompleto`, `vazio`.
+5. **Executa** (`EscrituraImporterService`): separa as páginas (reaproveita o `PdfSplitterService`) e copia os anexos (`NamingService` evita sobrescrita). **Os originais nunca são tocados.**
+6. Grava `reports/Importacao_livro<N>_<timestamp>.csv` (rastreabilidade folha a folha: origem → destino) e um `Importacao_resumo_<timestamp>.csv`.
+
+Trabalha por **faixa de livros** (`1083-1100`), é **retomável** (livro concluído é pulado — `progress/escritura_importacao.json`) e tem **modo simulação** (mostra o plano completo sem gerar nada). Por padrão processa só os livros `ok`; pode incluir os `revisar`. Os `manual`/`incompleto`/`vazio` ficam sempre de fora.
+
+Configuração (`config.json`): `EscrituraOrigem`, `EscrituraDestino`, `EscrituraNomeTemplate` (padrão `{Livro}_folha_{Pagina}`), `EscrituraFolhaDigitos` (padrão 3 → `002`), `EscrituraFolhasPorLivro` (padrão 400).
+
 ## Testes
 
 ```bash
@@ -164,8 +191,10 @@ PDFSuite/
 ├── modules/                # controllers finos (menu + 1 arquivo por funcionalidade)
 ├── models/                 # dataclasses/enums puros (PdfRecord, AppConfig, RenamePlanItem, ...)
 ├── services/                # regra de negocio (Scanner, Hasher, PdfInspector, Inventory,
-│                            #   RenameTemplate, Naming, PdfSplitter, OCR-stub)
-├── repositories/            # persistencia (Inventory, Config, Progress, Rename, Split)
+│                            #   RenameTemplate, Naming, PdfSplitter, OCR-stub,
+│                            #   EscrituraScanner/Planner/Importer)
+├── repositories/            # persistencia (Inventory, Config, Progress, Rename, Split,
+│                            #   EscrituraImport)
 ├── logs/ reports/ progress/ # saidas geradas em tempo de execucao
 ├── resources/                # reservado para recursos futuros (templates, icones de GUI)
 ├── docs/ARCHITECTURE.md      # arquitetura detalhada

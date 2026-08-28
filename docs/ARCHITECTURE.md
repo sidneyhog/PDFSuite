@@ -16,10 +16,11 @@ modules/       controllers finos: menu + 1 arquivo por funcionalidade.
      │
 services/      regra de negócio pura, testável, sem I/O de console.
      │         (Scanner, Hasher, PdfInspector, Inventory, RenameTemplate,
-     │          Naming, PdfSplitter, OCR-stub, Logging)
+     │          Naming, PdfSplitter, OCR-stub, Logging,
+     │          EscrituraScanner / EscrituraPlanner / EscrituraImporter)
      │
 repositories/  persistência: Inventory (CSV+JSON), Config, Progress,
-     │         Rename, Split. A única parte "suja" (I/O de arquivo).
+     │         Rename, Split, EscrituraImport. A parte "suja" (I/O de arquivo).
      │
 models/        dataclasses + enums puros. Zero dependências de outras camadas.
 ```
@@ -44,6 +45,7 @@ models/        dataclasses + enums puros. Zero dependências de outras camadas.
 - `models/config.py` — `AppConfig` (equivalente tipado do `config.json`).
 - `models/rename_plan.py` — `RenamePlanItem` (um item planejado do módulo de Renomeação: origem, livro, página, nome novo, destino, status).
 - `models/split_plan.py` — `SplitPlanItem` (um item planejado do módulo de Separação: **uma página** a extrair — origem, livro, total de páginas, número da página, nome novo, destino, status).
+- `models/escritura_import.py` — `LivroOrigem` (pasta de livro classificada), `LivroPlano` (plano completo de importação), `FolhaDestino` / `AnexoDestino` (um arquivo de saída cada).
 
 ## Fluxo de execução — módulo de Inventário
 
@@ -148,6 +150,44 @@ Toda a manipulação de PDF (pypdf) fica em `PdfSplitterService` — o módulo s
 
 **Limitação conhecida (aceita nesta versão)**: o módulo de Renomeação não tem checkpoint/retomada dedicados (diferente do Inventário). Reexecutar após uma interrupção recopia o que já tinha sido feito — protegido apenas pela regra de não-sobrescrita do `NamingService` (gera uma cópia com sufixo `(N)`, nunca corrompe nada, mas duplica trabalho). Aceitável porque copiar é rápido comparado ao Inventário (sem hash/parsing de PDF); reavaliar se acervos muito grandes tornarem isso perceptível.
 
+## Fluxo de execução — módulo de Preparação de livros de escrituras
+
+```
+main.py → Menu → "9 - Preparar livros ..." → modules/escritura_import_module.py
+                                                 │
+   1. Pergunta origem, destino, faixa de livros, simulacao?, so automatizaveis?
+   2. Descobre as pastas 'livroNNNN' na faixa. Livro ja concluido
+      (progress/escritura_importacao.json) e pulado.
+   3. Para cada livro:
+        ├─ EscrituraScannerService.scan_livro(): varredura iterativa, classifica
+        │   cada arquivo (folha / anexo / termo / lixo) pelos 4 padroes de nome
+        │   do acervo. Casa cada anexo com a folha da mesma pasta 'fXXX'.
+        │
+        ├─ EscrituraPlannerService.planejar() - LOGICA PURA (so depende de uma
+        │   funcao que conta paginas, injetada = PdfInspectorService):
+        │     - folha 1 = termo de abertura
+        │     - folhas 2..N = paginas dos arquivos de folha, EM ORDEM. Um
+        │       arquivo com P paginas ocupa P folhas consecutivas (resolve as
+        │       "duplas implicitas" - o nome nem sempre diz quantas folhas tem).
+        │     - anexos de um arquivo -> pasta da PRIMEIRA folha dele
+        │     - folha 400 = termo de encerramento
+        │     - diagnostico: ok (fecha exato) / revisar / manual / incompleto / vazio
+        │
+        ├─ (simulacao) mostra o plano completo e nao gera nada
+        │
+        └─ EscrituraImporterService.executar(): agrupa as folhas por PDF de
+           origem (abre cada um UMA vez via PdfSplitterService), grava 1 pagina
+           por pasta; copia os anexos (shutil.copy2). NamingService por pasta de
+           destino - colisao nunca sobrescreve. Originais NUNCA tocados.
+   4. EscrituraImportRepository: CSV de rastreabilidade por livro (folha a
+      folha: origem -> destino -> status) + CSV-resumo + marca o livro como
+      concluido.
+```
+
+**Retomada por livro** (mais grossa que a do Inventário, mais fina que a da Renomeação): a unidade e o livro inteiro, nao o arquivo. Um livro so entra em `concluidos` depois de gerado por completo.
+
+**Por que a lógica de planejamento é um service puro**: a regra dos 400 (qual pagina vira qual folha, onde cai cada anexo, se o livro fecha ou nao) é exatamente o que precisa de teste exaustivo antes de rodar em ~40 GB de rede. `EscrituraPlannerService` não abre PDF nem toca em disco — recebe uma função `contar_paginas` e devolve um `LivroPlano`. `EscrituraFolhasPorLivro` (config, padrão 400) deixa os testes usarem livros pequenos.
+
 ## Ideias reaproveitadas do CopiarPDFs.ps1
 
 - Varredura iterativa (fila, não recursão) e tratamento de erro por item sem abortar o scan inteiro.
@@ -180,3 +220,4 @@ Um app CLI deste porte não justifica um framework de injeção de dependência 
 6. Auditoria — estende o Inventário com "sem texto" e "muito grande" (corrompido/protegido/vazio/duplicado já são cobertos pelo Inventário).
 7. Relatórios/estatísticas avançadas.
 8. OCR — interface (`OcrEngine`) já preparada; implementação real fica para quando houver necessidade real.
+9. ✅ Preparação de livros de escrituras para importação — módulo especializado no acervo `2_Livros` do cartório. Scanner + planejador puro + importador; diagnóstico por livro; faixa de livros; retomável; modo simulação. Reaproveita `PdfSplitterService`, `PdfInspectorService`, `NamingService`, `RenameTemplateService`.
