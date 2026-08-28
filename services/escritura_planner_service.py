@@ -52,6 +52,9 @@ class EscrituraPlannerService:
         # --- folhas 2..N: conteudo ---
         proxima = 2
         max_paginas_arquivo = 0
+        arquivos_grandes = 0
+        arquivos_fora_do_nome = 0
+        primeiro_desvio = ""
         for arq in livro.folhas:
             n = max(0, int(self._contar_paginas(arq.caminho)))
             if n == 0:
@@ -59,21 +62,31 @@ class EscrituraPlannerService:
                 continue
             max_paginas_arquivo = max(max_paginas_arquivo, n)
             if n >= 12:
-                avisos.append(
-                    f"'{arq.caminho.name}' tem {n} paginas - folha + anexos no mesmo PDF?"
-                )
+                arquivos_grandes += 1
             primeira = proxima
             for pagina in range(1, n + 1):
                 folhas.append(FolhaDestino(numero=proxima, tipo="conteudo",
                                            origem=arq.caminho, pagina_origem=pagina))
                 proxima += 1
             if arq.folha_nome_ini is not None and abs(arq.folha_nome_ini - primeira) > 2:
-                avisos.append(
-                    f"'{arq.caminho.name}': nome indica folha {arq.folha_nome_ini}, "
-                    f"caiu na folha {primeira}"
-                )
+                arquivos_fora_do_nome += 1
+                if not primeiro_desvio:
+                    primeiro_desvio = (
+                        f"'{arq.caminho.name}' (nome: folha {arq.folha_nome_ini}, "
+                        f"caiu na {primeira})"
+                    )
             for origem_anexo in arq.anexos:
                 anexos.append(AnexoDestino(origem=origem_anexo, folha_destino=primeira))
+
+        if arquivos_grandes:
+            avisos.append(
+                f"{arquivos_grandes} arquivo(s) de folha com 12+ paginas - folha + anexos no mesmo PDF?"
+            )
+        if arquivos_fora_do_nome:
+            avisos.append(
+                f"{arquivos_fora_do_nome} arquivo(s) de folha cairam numa folha diferente do nome, "
+                f"a partir de {primeiro_desvio} - conferir o CSV"
+            )
 
         ultima_conteudo = proxima - 1
         total_conteudo = max(0, ultima_conteudo - 1)   # folhas 2..ultima
