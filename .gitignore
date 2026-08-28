@@ -14,6 +14,9 @@ progress/*.json
 # Ambiente ficticio gerado pelos testes
 tests/fixtures/
 
+# Area de teste manual (PDFs do proprio usuario, saidas descartaveis)
+_teste_manual/
+
 # Estado local de ferramentas (Claude Code, editores, etc.)
 .claude/
 
