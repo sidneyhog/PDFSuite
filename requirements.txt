@@ -1,7 +1,12 @@
 pypdf>=4.0,<6.0
 
-# OCR (modulo de verificacao de folhas por imagem) - motor 100% local, sem
-# nuvem e sem instalador externo. Puxa onnxruntime + opencv + numpy (~100 MB).
-# Se nao estiver instalado, o modulo de OCR se oferece para instalar sozinho
-# na primeira vez; nao afeta os outros modulos do PDFSuite.
-rapidocr-onnxruntime>=1.3,<2.0
+# Modulo de conferencia de folhas pelo codigo do rodape (SP0869...).
+# Le o barcode (Code 39) de cada pagina - metodo principal, ~100% de acerto.
+# Tudo pip, sem instalador externo (~8 MB no total).
+pypdfium2>=4.0,<5.0
+zxing-cpp>=2.2,<3.0
+pillow>=10.0
+
+# OCR (fallback, so quando o barcode e o texto do PDF falham). Opcional -
+# o modulo se oferece para instalar na primeira vez que precisar. ~100 MB.
+# rapidocr-onnxruntime>=1.3,<2.0
