@@ -19,6 +19,7 @@ O `CopiarPDFs.ps1` (PowerShell) continua existindo, intocado, como ferramenta le
 | 7 | Relatórios | 🔜 Próxima sessão |
 | 8 | Configurações | ✅ Exibição somente-leitura |
 | 9 | Preparar livros de escrituras para importação | ✅ Completo e funcional |
+| 10 | Conferir folhas pelo código do rodapé | ✅ Completo e funcional |
 | — | OCR | 🔜 Apenas interface preparada (`services/ocr_engine.py`) |
 
 ## Requisitos
@@ -170,6 +171,24 @@ Trabalha por **faixa de livros** (`1083-1100`), é **retomável** (livro conclu�
 
 Configuração (`config.json`): `EscrituraOrigem`, `EscrituraDestino`, `EscrituraNomeTemplate` (padrão `{Livro}_folha_{Pagina}`), `EscrituraFolhaDigitos` (padrão 3 → `002`), `EscrituraFolhasPorLivro` (padrão 400), `EscrituraPaginasCache` (opcional), `EscrituraAgruparPorDiagnostico` (padrão `true`).
 
+## Módulo de Conferência de folhas pelo código do rodapé
+
+Roda **em cima da saída da importação** (`EscrituraDestino`) e corrige a numeração usando o **código impresso no rodapé de toda folha** (`SP0869` + livro + folha — ex.: `SP08691083140`, `SP0869001103150`). Os 3 últimos dígitos são a folha, os 4 antes são o livro.
+
+Por página, tenta na ordem: (1) a **camada de texto** do PDF (livros antigos são PDFs pesquisáveis), (2) o **barcode Code 39** do rodapé (livros novos são só imagem — `pypdfium2` renderiza, `zxing-cpp` lê). Página **sem** esse código **não é folha do livro** — é anexo/documento escaneado junto.
+
+Por livro (`CodigoFolhaService` + `ConferenciaService`):
+
+- lê o código real de cada arquivo de folha e **remonta as pastas pelo número verdadeiro** (a `008` que na verdade é a folha 7 vira `007`);
+- página sem código → vira **anexo da primeira folha do arquivo de origem** (usa o `Importacao_livro<N>.csv` da importação);
+- página com código de **outro livro** → `_conflitos/`;
+- **duplicata** (mesma folha 2×) → a 1ª fica, as outras vão para `NNN/duplicada/` (nada é apagado);
+- **re-diagnostica** o livro; se agora fecha 400, move a pasta dele de `revisar/` para `ok/`.
+
+Corrige **no lugar** (não duplica em disco — moves na mesma unidade são instantâneos). Os originais na rede **nunca são tocados**. Tem **modo simulação** (mostra o de-para, não move nada) e é **retomável por livro**. Gera `reports/Conferencia_livro<N>_<timestamp>.csv` (de-para) e um `Conferencia_resumo_<timestamp>.csv`.
+
+Dependências (já no `requirements.txt`, ou o módulo se oferece para instalar): `pypdfium2`, `zxing-cpp`, `pillow`.
+
 ## Testes
 
 ```bash
@@ -194,9 +213,9 @@ PDFSuite/
 ├── models/                 # dataclasses/enums puros (PdfRecord, AppConfig, RenamePlanItem, ...)
 ├── services/                # regra de negocio (Scanner, Hasher, PdfInspector, Inventory,
 │                            #   RenameTemplate, Naming, PdfSplitter, OCR-stub,
-│                            #   EscrituraScanner/Planner/Importer)
+│                            #   EscrituraScanner/Planner/Importer, CodigoFolha, Conferencia)
 ├── repositories/            # persistencia (Inventory, Config, Progress, Rename, Split,
-│                            #   EscrituraImport)
+│                            #   EscrituraImport, Conferencia)
 ├── logs/ reports/ progress/ # saidas geradas em tempo de execucao
 ├── resources/                # reservado para recursos futuros (templates, icones de GUI)
 ├── docs/ARCHITECTURE.md      # arquitetura detalhada

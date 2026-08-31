@@ -17,10 +17,11 @@ modules/       controllers finos: menu + 1 arquivo por funcionalidade.
 services/      regra de negócio pura, testável, sem I/O de console.
      │         (Scanner, Hasher, PdfInspector, Inventory, RenameTemplate,
      │          Naming, PdfSplitter, OCR-stub, Logging,
-     │          EscrituraScanner / EscrituraPlanner / EscrituraImporter)
+     │          EscrituraScanner / EscrituraPlanner / EscrituraImporter,
+     │          CodigoFolha, Conferencia)
      │
-repositories/  persistência: Inventory (CSV+JSON), Config, Progress,
-     │         Rename, Split, EscrituraImport. A parte "suja" (I/O de arquivo).
+repositories/  persistência: Inventory (CSV+JSON), Config, Progress, Rename,
+     │         Split, EscrituraImport, Conferencia. A parte "suja" (I/O).
      │
 models/        dataclasses + enums puros. Zero dependências de outras camadas.
 ```
@@ -46,6 +47,7 @@ models/        dataclasses + enums puros. Zero dependências de outras camadas.
 - `models/rename_plan.py` — `RenamePlanItem` (um item planejado do módulo de Renomeação: origem, livro, página, nome novo, destino, status).
 - `models/split_plan.py` — `SplitPlanItem` (um item planejado do módulo de Separação: **uma página** a extrair — origem, livro, total de páginas, número da página, nome novo, destino, status).
 - `models/escritura_import.py` — `LivroOrigem` (pasta de livro classificada), `LivroPlano` (plano completo de importação), `FolhaDestino` / `AnexoDestino` (um arquivo de saída cada).
+- `models/conferencia.py` — `ItemConferido` (um PDF encontrado numa pasta de folha + o que foi lido dele), `ConferenciaLivro` (resultado da conferência de um livro: folhas reais, duplicatas, faltando, diagnóstico antes/depois).
 
 ## Fluxo de execução — módulo de Inventário
 
@@ -188,6 +190,39 @@ main.py → Menu → "9 - Preparar livros ..." → modules/escritura_import_modu
 
 **Por que a lógica de planejamento é um service puro**: a regra dos 400 (qual pagina vira qual folha, onde cai cada anexo, se o livro fecha ou nao) é exatamente o que precisa de teste exaustivo antes de rodar em ~40 GB de rede. `EscrituraPlannerService` não abre PDF nem toca em disco — recebe uma função `contar_paginas` e devolve um `LivroPlano`. `EscrituraFolhasPorLivro` (config, padrão 400) deixa os testes usarem livros pequenos.
 
+## Fluxo de execução — módulo de Conferência (opção 10)
+
+```
+main.py → Menu → "10 - Conferir folhas ..." → modules/conferencia_module.py
+                                                  │
+   1. Garante as libs (pypdfium2 / zxing-cpp / pillow) - oferece pip install.
+   2. Descobre <base>/<diagnostico>/<livro>/ na saida da importacao.
+   3. Para cada livro (retomavel; progress/conferencia.json):
+        ├─ CodigoFolhaService.identificar(pagina):
+        │     1) camada de texto do PDF  -> regex SP0869(LLLL)(FFF)
+        │     2) barcode Code 39 do rodape (render pypdfium2 + zxing-cpp)
+        │     -> (livro, folha) ou None (= nao e folha do livro)
+        │
+        ├─ ConferenciaService.conferir() - decide, por item:
+        │     folha com codigo do livro  -> vai para a pasta <folha real>
+        │     folha com codigo de outro livro -> _conflitos/
+        │     sem codigo (atestado escaneado junto) -> anexo da 1a folha do
+        │        arquivo de origem (le o Importacao_livro<N>.csv)
+        │     duplicata (mesma folha 2x) -> NNN/duplicada/ (nada e apagado)
+        │
+        ├─ (simulacao) so monta o de-para
+        │
+        └─ executa: move tudo para <livro>/_conferencia_tmp/, apaga as
+           pastas NNN antigas, recoloca cada arquivo na pasta certa
+           (rename na mesma unidade = instantaneo, zero disco extra).
+           Re-diagnostica; se agora fecha 400, o modulo move a pasta do
+           livro de 'revisar/' para 'ok/'.
+   4. ConferenciaRepository: Conferencia_livro<N>_<ts>.csv (de-para item a
+      item) + Conferencia_resumo_<ts>.csv (diagnostico antes -> depois).
+```
+
+O `EscrituraDestino` (`C:\Temp`) é reescrito **no lugar** (restrição de disco do cartório). Os originais na rede continuam intocados — pior caso, refaz a importação do zero. O `CodigoFolhaService` é a implementação real do que a interface `OcrEngine` sempre previu, só que a fonte primária é o **barcode/código impresso**, não OCR de texto livre.
+
 ## Ideias reaproveitadas do CopiarPDFs.ps1
 
 - Varredura iterativa (fila, não recursão) e tratamento de erro por item sem abortar o scan inteiro.
@@ -221,3 +256,4 @@ Um app CLI deste porte não justifica um framework de injeção de dependência 
 7. Relatórios/estatísticas avançadas.
 8. OCR — interface (`OcrEngine`) já preparada; implementação real fica para quando houver necessidade real.
 9. ✅ Preparação de livros de escrituras para importação — módulo especializado no acervo `2_Livros` do cartório. Scanner + planejador puro + importador; diagnóstico por livro; faixa de livros; retomável; modo simulação. Reaproveita `PdfSplitterService`, `PdfInspectorService`, `NamingService`, `RenameTemplateService`.
+10. ✅ Conferência de folhas pelo código do rodapé — lê o código impresso (`SP0869` + livro + folha) de cada página (texto do PDF → barcode Code 39), corrige a numeração das pastas no lugar, separa anexos escaneados dentro de arquivos de folha, trata duplicatas e re-diagnostica. É a implementação real da ideia por trás de `OcrEngine`.

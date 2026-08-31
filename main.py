@@ -12,6 +12,7 @@ from pathlib import Path
 
 from models.config import AppConfig
 from modules.audit_module import AuditModule
+from modules.conferencia_module import ConferenciaModule
 from modules.config_module import ConfigModule
 from modules.copy_module import CopyModule
 from modules.escritura_import_module import EscrituraImportModule
@@ -21,12 +22,14 @@ from modules.merge_module import MergeModule
 from modules.rename_module import RenameModule
 from modules.report_module import ReportModule
 from modules.split_module import SplitModule
+from repositories.conferencia_repository import ConferenciaRepository
 from repositories.config_repository import ConfigRepository
 from repositories.escritura_import_repository import EscrituraImportRepository
 from repositories.inventory_repository import InventoryRepository
 from repositories.progress_repository import ProgressRepository
 from repositories.rename_repository import RenameRepository
 from repositories.split_repository import SplitRepository
+from services.codigo_folha_service import CodigoFolhaService
 from services.escritura_importer_service import EscrituraImporterService
 from services.escritura_scanner_service import EscrituraScannerService
 from services.hasher_service import HasherService
@@ -94,6 +97,12 @@ def main() -> int:
         EscrituraImporterService(),
     )
 
+    conferencia_module = ConferenciaModule(
+        config,
+        CodigoFolhaService(),
+        ConferenciaRepository(config.reports_dir),
+    )
+
     menu = Menu(
         [
             MenuOption("1", "Inventario", inventory_module.run),
@@ -105,8 +114,9 @@ def main() -> int:
             MenuOption("7", "Relatorios", ReportModule().run),
             MenuOption("8", "Configuracoes", config_module.run),
             MenuOption("9", "Preparar livros de escrituras para importacao", escritura_module.run),
+            MenuOption("10", "Conferir folhas pelo codigo do rodape", conferencia_module.run),
         ],
-        sair_numero="10",
+        sair_numero="11",
     )
 
     try:
