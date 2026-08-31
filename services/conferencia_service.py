@@ -106,8 +106,11 @@ class ConferenciaService:
                     res.duplicadas[f] = res.duplicadas.get(f, 0) + 1
                 res.folhas_reais.add(f)
             elif item.classe == "sem_codigo":
-                alvo = primeira_folha_da_origem.get(item.pasta_atual, item.pasta_atual)
-                item.destino_folha = alvo
+                # pasta da 1a folha do MESMO arquivo de origem (via Importacao_livro<N>.csv)
+                pasta_1a = primeira_folha_da_origem.get(item.pasta_atual, item.pasta_atual)
+                # ...e a folha REAL dessa pasta (pode ter derivado tambem)
+                folha_real = self._folha_real_da_pasta(res, pasta_1a)
+                item.destino_folha = folha_real if folha_real is not None else pasta_1a
                 item.acao = "vira_anexo"
             elif item.classe == "outro_livro":
                 item.destino_folha = None
