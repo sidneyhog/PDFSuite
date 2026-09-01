@@ -32,7 +32,48 @@ class EscrituraRelatorioService:
         for numero, diag, pasta in self._descobrir(base_dir):
             rel.livros.append(self._analisar(numero, diag, pasta, reports_dir))
         rel.livros.sort(key=lambda lv: lv.numero)
+        self._pos_processar(rel)
         return rel
+
+    def _pos_processar(self, rel: RelatorioEscrituras) -> None:
+        """Recalcula o diagnostico real (do que esta no disco) e cruza cada
+        conflito: a folha do codigo falta no livro certo? ja existe?
+        """
+        presentes_por_livro = {lv.numero: set(lv.folhas_presentes) for lv in rel.livros}
+        pasta_por_livro = {lv.numero: lv.pasta for lv in rel.livros}
+        for lv in rel.livros:
+            lv.diagnostico_real = self._diag_real(lv)
+            novos = []
+            for folha_lida, livro_cod, origem, pagina, *_ in lv.conflitos:
+                situacao, acao = self._analisar_conflito(folha_lida, livro_cod, presentes_por_livro, pasta_por_livro)
+                novos.append((folha_lida, livro_cod, origem, pagina, situacao, acao))
+            lv.conflitos = novos
+
+    def _analisar_conflito(self, folha_lida, livro_cod, presentes_por_livro, pasta_por_livro):
+        try:
+            alvo, folha = int(livro_cod), int(folha_lida)
+        except (TypeError, ValueError):
+            return "codigo ilegivel", "conferir manualmente"
+        if alvo not in presentes_por_livro:
+            return f"livro {alvo} nao processado", f"conferir livro {alvo}"
+        if folha in presentes_por_livro[alvo]:
+            return f"folha ja existe no {alvo}", "conferir duplicidade"
+        destino = pasta_por_livro[alvo] / f"{folha:03d}" / f"{alvo}_folha_{folha:03d}.pdf"
+        return f"FALTA no {alvo}", f"copiar para {destino}"
+
+    def _diag_real(self, lv: LivroRelatorio) -> str:
+        presentes = set(lv.folhas_presentes)
+        conteudo = sorted(f for f in presentes if 1 < f < self._total)
+        if lv.conflitos or lv.duplicadas:
+            return "revisar"
+        if not conteudo:
+            return "vazio"
+        if len(conteudo) < (self._total - 2) * 0.9:
+            return "incompleto"
+        if (conteudo == list(range(2, self._total)) and 1 in presentes and self._total in presentes):
+            return "ok"
+        faltam = (self._total - 1) - 1 - len(conteudo)
+        return "quase" if faltam <= 3 else "revisar"
 
     # ------------------------------------------------------------------ #
 

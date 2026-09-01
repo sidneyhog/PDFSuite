@@ -22,11 +22,13 @@ class LivroRelatorio:
     folhas_sem_arquivo: list[int] = field(default_factory=list)   # pasta NNN existe, sem PDF de folha
     duplicadas: dict[int, int] = field(default_factory=dict)      # folha -> nº de copias extras
     anexos_por_folha: dict[int, int] = field(default_factory=dict)
-    conflitos: list = field(default_factory=list)                 # (folha_lida, livro_do_codigo, origem, pagina)
+    # (folha_lida, livro_do_codigo, origem, pagina, situacao, acao_sugerida)
+    conflitos: list = field(default_factory=list)
     origem_por_folha: dict[int, str] = field(default_factory=dict)
     erros: list = field(default_factory=list)                     # (folha, origem, mensagem)
     tem_abertura: bool = False
     tem_encerramento: bool = False
+    diagnostico_real: str = ""            # recalculado a partir do que esta no disco
     csv_rastreio: Optional[Path] = None
     avisos: list[str] = field(default_factory=list)
 

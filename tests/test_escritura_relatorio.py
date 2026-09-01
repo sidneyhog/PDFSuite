@@ -61,6 +61,35 @@ def test_relatorio_consolida_faltando_dup_anexo_conflito(tmp_path: Path) -> None
     assert lv.tem_abertura and lv.tem_encerramento
     assert len(lv.conflitos) == 1 and lv.conflitos[0][1] == "1250"
     assert lv.origem_por_folha[4].endswith("1_livro1107_folha_004.pdf")
+    # diagnostico real recalculado do disco (revisar: tem conflito + duplicada)
+    assert lv.diagnostico_real == "revisar"
+    # conflito para livro nao processado -> acao aponta pra conferir o 1250
+    _, _, _, _, situacao, acao = lv.conflitos[0]
+    assert "1250 nao processado" in situacao
+
+
+def test_relatorio_conflito_aponta_folha_faltando_no_livro_certo(tmp_path: Path) -> None:
+    base = tmp_path / "out"
+    # 1113 processado, sem a folha 3
+    for n in (1, 2, 4, 5, 6):
+        _pdf(base / "quase" / "1113" / f"{n:03d}" / f"1113_folha_{n:03d}.pdf")
+    # 1114 completo, mas com um conflito: pagina com codigo do 1113 folha 3
+    for n in range(1, 7):
+        _pdf(base / "ok" / "1114" / f"{n:03d}" / f"1114_folha_{n:03d}.pdf")
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    with open(reports / "Importacao_livro1114_20260101_000000.csv", "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.writer(f, delimiter=";")
+        w.writerow(["Livro", "FolhaDestino", "Tipo", "PastaDestino", "NomeDestino",
+                    "Origem", "PaginaOrigem", "Status", "Erro", "CaminhoDestino"])
+        w.writerow([1114, 3, "conflito", "", "", "N:\\x\\livro1114\\f003\\1_livro1113_folha_003.pdf",
+                    1, "Fora do plano", "codigo do livro 1113 folha 3", ""])
+
+    rel = EscrituraRelatorioService(folhas_por_livro=6).gerar(base, reports)
+    lv1114 = next(lv for lv in rel.livros if lv.numero == 1114)
+    _, _, _, _, situacao, acao = lv1114.conflitos[0]
+    assert "FALTA no 1113" in situacao
+    assert acao.replace("\\", "/").endswith("quase/1113/003/1113_folha_003.pdf")
 
 
 def test_relatorio_repository_csv_fallback(tmp_path: Path) -> None:

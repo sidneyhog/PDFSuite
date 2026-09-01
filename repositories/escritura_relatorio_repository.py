@@ -37,14 +37,15 @@ class EscrituraRelatorioRepository:
 
     def _montar_abas(self, rel: RelatorioEscrituras) -> "dict[str, tuple[list[str], list[list]]]":
         resumo_h = [
-            "Livro", "Diagnostico", "Pasta", "FolhasPresentes", "FolhasFaltando_qtd",
-            "FolhasFaltando", "Duplicadas_qtd", "Duplicadas_folhas", "Anexos",
-            "Conflitos", "Abertura", "Encerramento", "PastaSemFolha", "Avisos",
+            "Livro", "PastaDiagnostico", "DiagnosticoReal", "Pasta", "FolhasPresentes",
+            "FolhasFaltando_qtd", "FolhasFaltando", "Duplicadas_qtd", "Duplicadas_folhas",
+            "Anexos", "Conflitos", "Abertura", "Encerramento", "PastaSemFolha", "Avisos",
         ]
         resumo, faltando, dups, confl, anexos, rastreio = [], [], [], [], [], []
         for lv in rel.livros:
             resumo.append([
-                lv.numero, lv.diagnostico, str(lv.pasta), len(lv.folhas_presentes),
+                lv.numero, lv.diagnostico, lv.diagnostico_real, str(lv.pasta),
+                len(lv.folhas_presentes),
                 len(lv.folhas_faltando), faixas(lv.folhas_faltando),
                 lv.total_duplicadas, faixas(sorted(lv.duplicadas)), lv.total_anexos,
                 len(lv.conflitos), "sim" if lv.tem_abertura else "NAO",
@@ -57,8 +58,10 @@ class EscrituraRelatorioRepository:
             for folha, qtd in sorted(lv.duplicadas.items()):
                 confusao = lv.pasta / f"{folha:03d}" / "duplicada"
                 dups.append([lv.numero, folha, qtd, str(confusao)])
-            for folha_lida, livro_cod, origem, pagina in lv.conflitos:
-                confl.append([lv.numero, folha_lida, livro_cod, origem, pagina])
+            for folha_lida, livro_cod, origem, pagina, *resto in lv.conflitos:
+                situacao = resto[0] if resto else ""
+                acao = resto[1] if len(resto) > 1 else ""
+                confl.append([lv.numero, folha_lida, livro_cod, situacao, acao, origem, pagina])
             for folha, qtd in sorted(lv.anexos_por_folha.items()):
                 anexos.append([lv.numero, folha, qtd])
             for folha in sorted(lv.origem_por_folha):
@@ -68,7 +71,8 @@ class EscrituraRelatorioRepository:
             "Resumo": (resumo_h, resumo),
             "Folhas Faltando": (["Livro", "Diagnostico", "Folha", "Observacao"], faltando),
             "Duplicadas": (["Livro", "Folha", "CopiasExtras", "Pasta"], dups),
-            "Conflitos": (["Livro", "FolhaLida", "LivroDoCodigo", "Origem", "PaginaOrigem"], confl),
+            "Conflitos": (["Livro", "FolhaLida", "LivroDoCodigo", "Situacao", "AcaoSugerida",
+                           "Origem", "PaginaOrigem"], confl),
             "Anexos por Folha": (["Livro", "Folha", "QtdAnexos"], anexos),
             "Rastreabilidade": (["Livro", "Folha", "OrigemNoServidor"], rastreio),
         }
