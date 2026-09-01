@@ -151,6 +151,8 @@ class EscrituraRelatorioService:
             folha = (lin.get("FolhaDestino") or "").strip()
             origem = (lin.get("Origem") or "").strip()
             if tipo == "conflito":
+                if (lin.get("Status") or "").strip().lower().startswith("resolv"):
+                    continue                       # ja tratado pela opcao 13
                 det = lin.get("Erro") or ""
                 m = re.search(r"livro (\d+)", det)
                 lr.conflitos.append((folha, m.group(1) if m else "", origem, (lin.get("PaginaOrigem") or "").strip()))

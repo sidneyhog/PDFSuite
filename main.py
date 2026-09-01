@@ -15,6 +15,7 @@ from modules.audit_module import AuditModule
 from modules.conferencia_module import ConferenciaModule
 from modules.config_module import ConfigModule
 from modules.copy_module import CopyModule
+from modules.escritura_conflito_module import EscrituraConflitoModule
 from modules.escritura_import_codigo_module import EscrituraImportCodigoModule
 from modules.escritura_import_module import EscrituraImportModule
 from modules.escritura_relatorio_module import EscrituraRelatorioModule
@@ -26,6 +27,7 @@ from modules.report_module import ReportModule
 from modules.split_module import SplitModule
 from repositories.conferencia_repository import ConferenciaRepository
 from repositories.config_repository import ConfigRepository
+from repositories.escritura_conflito_repository import EscrituraConflitoRepository
 from repositories.escritura_import_repository import EscrituraImportRepository
 from repositories.escritura_relatorio_repository import EscrituraRelatorioRepository
 from repositories.inventory_repository import InventoryRepository
@@ -33,6 +35,7 @@ from repositories.progress_repository import ProgressRepository
 from repositories.rename_repository import RenameRepository
 from repositories.split_repository import SplitRepository
 from services.codigo_folha_service import CodigoFolhaService
+from services.escritura_conflito_service import EscrituraConflitoService
 from services.escritura_importer_service import EscrituraImporterService
 from services.escritura_relatorio_service import EscrituraRelatorioService
 from services.escritura_scanner_service import EscrituraScannerService
@@ -130,6 +133,18 @@ def main() -> int:
         EscrituraRelatorioRepository(config.reports_dir, config.escritura_folhas_por_livro),
     )
 
+    escritura_conflito_module = EscrituraConflitoModule(
+        config,
+        leitor_codigo,
+        EscrituraConflitoService(
+            leitor_codigo,
+            EscrituraRelatorioService(config.escritura_folhas_por_livro),
+            PdfSplitterService(),
+            config.escritura_folhas_por_livro,
+        ),
+        EscrituraConflitoRepository(config.reports_dir),
+    )
+
     menu = Menu(
         [
             MenuOption("1", "Inventario", inventory_module.run),
@@ -144,8 +159,9 @@ def main() -> int:
             MenuOption("10", "Conferir folhas pelo codigo do rodape", conferencia_module.run),
             MenuOption("11", "Importar escrituras por codigo (copia+separa+confere)", escritura_codigo_module.run),
             MenuOption("12", "Relatorio de escrituras para o escrevente", escritura_relatorio_module.run),
+            MenuOption("13", "Tratar conflitos e validar a saida de escrituras", escritura_conflito_module.run),
         ],
-        sair_numero="13",
+        sair_numero="14",
     )
 
     try:
