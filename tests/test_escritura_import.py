@@ -250,7 +250,33 @@ def test_repository_rastreabilidade_e_retomada(tmp_path: Path) -> None:
     assert csv_path.exists()
     conteudo = csv_path.read_text(encoding="utf-8-sig")
     assert "abertura" in conteudo and "encerramento" in conteudo and "anexo" in conteudo
+    assert "CaminhoDestino" in conteudo.splitlines()[0]
 
     assert repo.concluidos() == set()
     repo.marcar_concluido(9001)
     assert 9001 in repo.concluidos()
+
+
+def test_repository_marca_folha_duplicada_com_caminho(tmp_path: Path) -> None:
+    import csv as _csv
+
+    from models.escritura_import import FolhaDestino, LivroPlano
+
+    dest = tmp_path / "out" / "revisar" / "1092"
+    plano = LivroPlano(
+        numero=1092, pasta_origem=tmp_path, pasta_destino=dest,
+        folhas=[
+            FolhaDestino(150, "conteudo", tmp_path / "a.pdf", 1, nome_destino="1092_folha_150.pdf",
+                         caminho_destino=dest / "150" / "1092_folha_150.pdf", status="Gerada"),
+            FolhaDestino(150, "conteudo", tmp_path / "b.pdf", 4, nome_destino="1092_folha_150.pdf",
+                         caminho_destino=dest / "150" / "duplicada" / "1092_folha_150.pdf",
+                         status="Gerada", duplicada=True),
+        ],
+        anexos=[], total_folhas_conteudo=1, ultima_folha_conteudo=150, diagnostico="revisar",
+    )
+    csv_path = EscrituraImportRepository(tmp_path / "reports", tmp_path / "progress").salvar_livro(plano)
+    linhas = list(_csv.DictReader(csv_path.read_text(encoding="utf-8-sig").splitlines(), delimiter=";"))
+    dup = next(l for l in linhas if l["Tipo"] == "duplicada")
+    assert dup["FolhaDestino"] == "150"
+    assert dup["PastaDestino"] == "150/duplicada"
+    assert dup["CaminhoDestino"].replace("\\", "/").endswith("150/duplicada/1092_folha_150.pdf")

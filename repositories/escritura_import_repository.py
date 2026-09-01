@@ -18,7 +18,7 @@ logger = logging.getLogger("pdfsuite")
 
 _COLUNAS_LIVRO = [
     "Livro", "FolhaDestino", "Tipo", "PastaDestino", "NomeDestino",
-    "Origem", "PaginaOrigem", "Status", "Erro",
+    "Origem", "PaginaOrigem", "Status", "Erro", "CaminhoDestino",
 ]
 _COLUNAS_RESUMO = [
     "Livro", "Diagnostico", "PastaSaida", "FolhasConteudo", "UltimaFolha",
@@ -64,22 +64,26 @@ class EscrituraImportRepository:
             escritor = csv.writer(arquivo, delimiter=";")
             escritor.writerow(_COLUNAS_LIVRO)
             for f in plano.folhas:
+                pasta = f.caminho_destino.parent.name if f.caminho_destino else ""
+                if f.duplicada and f.caminho_destino:
+                    pasta = f"{f.caminho_destino.parent.parent.name}/duplicada"
                 escritor.writerow([
-                    plano.numero, f.numero, f.tipo,
-                    f.caminho_destino.parent.name if f.caminho_destino else "",
-                    f.nome_destino, str(f.origem), f.pagina_origem, f.status, f.erro,
+                    plano.numero, f.numero, "duplicada" if f.duplicada else f.tipo,
+                    pasta, f.nome_destino, str(f.origem), f.pagina_origem, f.status, f.erro,
+                    str(f.caminho_destino) if f.caminho_destino else "",
                 ])
             for a in plano.anexos:
                 escritor.writerow([
                     plano.numero, a.folha_destino, "anexo",
                     a.caminho_destino.parent.name if a.caminho_destino else "",
                     a.nome_destino, str(a.origem), a.pagina_origem or "", a.status, a.erro,
+                    str(a.caminho_destino) if a.caminho_destino else "",
                 ])
             for origem, pagina, (livro_lido, folha_lida) in getattr(plano, "conflitos", []):
                 escritor.writerow([
-                    plano.numero, "", "conflito", "", "",
+                    plano.numero, folha_lida, "conflito", "", "",
                     str(origem), pagina, "Fora do plano",
-                    f"codigo do livro {livro_lido} folha {folha_lida}",
+                    f"codigo do livro {livro_lido} folha {folha_lida}", "",
                 ])
         logger.info("Rastreabilidade do livro %d salva em '%s'.", plano.numero, destino)
         return destino
