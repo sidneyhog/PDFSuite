@@ -125,6 +125,30 @@ def test_conferencia_nao_rebaixa_livro_ok(tmp_path: Path) -> None:
     assert not (base / "_conferencia_tmp").exists()
 
 
+def test_conferencia_resgata_anexo_que_era_folha(tmp_path: Path) -> None:
+    """Nova rodada apos o OCR entrar: um 'anexo_01.pdf' que a conferencia
+    anterior criou de uma folha mal-lida agora le o codigo -> volta a ser folha.
+    Nao precisa apagar/refazer.
+    """
+    base = tmp_path / "s" / "quase" / "1300"
+    _pdf(base / "010" / "1300_folha_010.pdf")
+    _pdf(base / "010" / "anexo_01.pdf")               # era a folha 11, virou anexo
+    _pdf(base / "012" / "1300_folha_012.pdf")
+    leitor = FakeLeitor({
+        "1300_folha_010.pdf": (1300, 10),
+        "anexo_01.pdf": (1300, 11),                    # agora o "OCR" le
+        "1300_folha_012.pdf": (1300, 12),
+    })
+    res = ConferenciaService(leitor, folhas_por_livro=14).conferir(
+        base, 1300, "quase", None, executar=True
+    )
+
+    resgatada = next(i for i in res.itens if i.caminho_atual.name == "anexo_01.pdf")
+    assert resgatada.classe == "folha" and resgatada.destino_folha == 11
+    assert (base / "011" / "1300_folha_011.pdf").exists()
+    assert 11 in res.folhas_reais
+
+
 def test_conferencia_duplicata_vai_para_subpasta(tmp_path: Path) -> None:
     base = tmp_path / "s" / "quase" / "1090"
     _pdf(base / "010" / "1090_folha_010.pdf")

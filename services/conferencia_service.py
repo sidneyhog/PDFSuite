@@ -32,6 +32,10 @@ logger = logging.getLogger("pdfsuite")
 
 _RE_PASTA = re.compile(r"^\d+$")
 
+# anexo que a PROPRIA conferencia criou (de uma pagina sem codigo). Numa nova
+# rodada precisa ser RELIDO - se agora o OCR le o codigo, era folha e e resgatada.
+_RE_ANEXO_CONFERENCIA = re.compile(r"^anexo_\d+\.pdf$", re.IGNORECASE)
+
 # ranking dos diagnosticos (menor = melhor) para a trava anti-regressao
 _ORDEM_DIAG = {"ok": 0, "quase": 1, "revisar": 2, "manual": 3, "incompleto": 3, "vazio": 4}
 
@@ -41,6 +45,15 @@ def _eh_folha_gerada(nome: str, numero_livro: int) -> bool:
     Anexos (2_livroNNNN_folha_..., pasta_..., L.####..., anexo_NN.pdf) -> False.
     """
     return bool(re.match(rf"^{numero_livro}_folha_\d+\.pdf$", nome, re.IGNORECASE))
+
+
+def _precisa_ler_codigo(nome: str, numero_livro: int) -> bool:
+    """Arquivos em que vale a pena tentar ler o codigo: as folhas geradas pelo
+    split E os 'anexo_NN.pdf' que a conferencia criou (podem ter sido folha
+    classificada errada por falha de leitura numa rodada anterior).
+    Anexos pre-existentes de verdade (2_, 3_, pasta_, L.####) nao tem codigo.
+    """
+    return _eh_folha_gerada(nome, numero_livro) or bool(_RE_ANEXO_CONFERENCIA.match(nome))
 
 
 class ConferenciaService:
@@ -82,7 +95,7 @@ class ConferenciaService:
                     pasta_atual=n_pasta,
                     eh_folha_gerada=_eh_folha_gerada(arquivo.name, numero_livro),
                 )
-                if not item.eh_folha_gerada:
+                if not _precisa_ler_codigo(arquivo.name, numero_livro):
                     item.classe = "anexo"          # anexo pre-existente (2_, 3_, ...)
                 else:
                     lido = self._leitor.identificar(arquivo)
