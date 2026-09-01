@@ -149,6 +149,29 @@ def test_conferencia_resgata_anexo_que_era_folha(tmp_path: Path) -> None:
     assert 11 in res.folhas_reais
 
 
+def test_conferencia_reabsorve_conflitos_e_duplicada(tmp_path: Path) -> None:
+    """Numa nova rodada, arquivos que ficaram presos em _conflitos/ e
+    NNN/duplicada/ sao relidos: se agora o codigo bate, sao resgatados.
+    """
+    base = tmp_path / "s" / "revisar" / "1400"
+    _pdf(base / "005" / "1400_folha_005.pdf")
+    _pdf(base / "_conflitos" / "1400_folha_006.pdf")            # era "outro livro" por mau OCR
+    _pdf(base / "005" / "duplicada" / "1400_folha_005_2.pdf")   # falsa duplicata: e a folha 7
+    leitor = FakeLeitor({
+        "1400_folha_005.pdf": (1400, 5),
+        "1400_folha_006.pdf": (1400, 6),                        # agora le certo
+        "1400_folha_005_2.pdf": (1400, 7),                      # nao era dup, e a folha 7
+    })
+    res = ConferenciaService(leitor, folhas_por_livro=12).conferir(
+        base, 1400, "revisar", None, executar=True
+    )
+
+    assert (base / "006" / "1400_folha_006.pdf").exists()
+    assert (base / "007" / "1400_folha_007.pdf").exists()
+    assert res.folhas_reais.issuperset({5, 6, 7})
+    assert not (base / "_conflitos").exists() or not list((base / "_conflitos").glob("*.pdf"))
+
+
 def test_conferencia_duplicata_vai_para_subpasta(tmp_path: Path) -> None:
     base = tmp_path / "s" / "quase" / "1090"
     _pdf(base / "010" / "1090_folha_010.pdf")

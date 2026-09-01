@@ -98,18 +98,20 @@ class ConferenciaService:
                 if not _precisa_ler_codigo(arquivo.name, numero_livro):
                     item.classe = "anexo"          # anexo pre-existente (2_, 3_, ...)
                 else:
-                    lido = self._leitor.identificar(arquivo)
-                    if lido is None:
-                        item.classe = "sem_codigo"
-                        res.sem_codigo += 1
-                    elif lido[0] != numero_livro:
-                        item.classe = "outro_livro"
-                        item.livro_lido, item.folha_lida = lido
-                        res.outro_livro += 1
-                    else:
-                        item.classe = "folha"
-                        item.livro_lido, item.folha_lida = lido
+                    self._classificar_pelo_codigo(item, numero_livro, res)
                 res.itens.append(item)
+
+        # 1b. reabsorve o que rodadas anteriores isolaram em _conflitos/ e
+        #     NNN/duplicada/ - rele cada um; com o OCR novo, o que era folha
+        #     mal-lida e resgatado. O que continuar conflito/duplicata volta pra la.
+        for arquivo, n_pasta in self._itens_reprocessaveis(pasta_livro):
+            item = ItemConferido(
+                caminho_atual=arquivo,
+                pasta_atual=n_pasta,
+                eh_folha_gerada=_eh_folha_gerada(arquivo.name, numero_livro),
+            )
+            self._classificar_pelo_codigo(item, numero_livro, res)  # sempre rele
+            res.itens.append(item)
 
         # 2. decide o destino de cada item
         vistos: dict[int, int] = {}      # folha_real -> quantas ja vistas
@@ -129,8 +131,12 @@ class ConferenciaService:
                 pasta_1a = primeira_folha_da_origem.get(item.pasta_atual, item.pasta_atual)
                 # ...e a folha REAL dessa pasta (pode ter derivado tambem)
                 folha_real = self._folha_real_da_pasta(res, pasta_1a)
-                item.destino_folha = folha_real if folha_real is not None else pasta_1a
-                item.acao = "vira_anexo"
+                item.destino_folha = folha_real if folha_real is not None else (pasta_1a or None)
+                if item.destino_folha:
+                    item.acao = "vira_anexo"
+                else:
+                    # veio de _conflitos/ e continua ilegivel: sem onde posicionar
+                    item.acao = "conflito"
             elif item.classe == "outro_livro":
                 item.destino_folha = None
                 item.acao = "conflito"
@@ -194,6 +200,8 @@ class ConferenciaService:
         for i, item in enumerate(res.itens):
             if item.acao == "conflito":
                 destino = base / "_conflitos" / item.caminho_atual.name
+                if item.caminho_atual == destino:
+                    continue                      # ja esta em _conflitos/, nada a fazer
             elif item.acao == "duplicada":
                 destino = staging / f"dup_{i}_{item.caminho_atual.name}"
             else:
@@ -205,9 +213,16 @@ class ConferenciaService:
             except OSError as erro:
                 res.avisos.append(f"falha ao mover '{item.caminho_atual.name}': {erro}")
 
-        # 5b. apaga as pastas NNN antigas (agora vazias)
+        # 5b. apaga as pastas NNN antigas (agora vazias), inclusive a subpasta
+        #     duplicada/ que ja foi esvaziada no passo 5a
         for pasta in list(base.iterdir()):
             if pasta.is_dir() and _RE_PASTA.match(pasta.name):
+                dup = pasta / "duplicada"
+                if dup.is_dir():
+                    try:
+                        dup.rmdir()
+                    except OSError:
+                        pass
                 try:
                     pasta.rmdir()
                 except OSError:
@@ -252,6 +267,39 @@ class ConferenciaService:
             return pasta / f"anexo_{contador[('anx', pasta)]:02d}.pdf"
 
         return pasta / item.caminho_atual.name    # anexo pre-existente: mantem o nome
+
+    def _classificar_pelo_codigo(
+        self, item: ItemConferido, numero_livro: int, res: ConferenciaLivro
+    ) -> None:
+        """Le o codigo do arquivo e define item.classe (folha/outro_livro/sem_codigo)."""
+        lido = self._leitor.identificar(item.caminho_atual)
+        if lido is None:
+            item.classe = "sem_codigo"
+            res.sem_codigo += 1
+        elif lido[0] != numero_livro:
+            item.classe = "outro_livro"
+            item.livro_lido, item.folha_lida = lido
+            res.outro_livro += 1
+        else:
+            item.classe = "folha"
+            item.livro_lido, item.folha_lida = lido
+
+    @staticmethod
+    def _itens_reprocessaveis(pasta_livro: Path):
+        """PDFs que rodadas anteriores isolaram em _conflitos/ ou NNN/duplicada/.
+        Devem ser SEMPRE relidos: com o OCR novo, uma folha antes mal-lida
+        volta a ser identificada e e resgatada. Yield (caminho, pasta_atual).
+        """
+        conflitos = pasta_livro / "_conflitos"
+        if conflitos.is_dir():
+            for pdf in sorted(conflitos.glob("*.pdf"), key=lambda a: a.name.lower()):
+                yield pdf, 0
+        for sub in sorted(pasta_livro.iterdir()):
+            if sub.is_dir() and _RE_PASTA.match(sub.name):
+                dup = sub / "duplicada"
+                if dup.is_dir():
+                    for pdf in sorted(dup.glob("*.pdf"), key=lambda a: a.name.lower()):
+                        yield pdf, int(sub.name)
 
     @staticmethod
     def _folha_real_da_pasta(res: ConferenciaLivro, pasta_num: int) -> Optional[int]:
