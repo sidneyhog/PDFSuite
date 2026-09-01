@@ -280,3 +280,34 @@ def test_repository_marca_folha_duplicada_com_caminho(tmp_path: Path) -> None:
     assert dup["FolhaDestino"] == "150"
     assert dup["PastaDestino"] == "150/duplicada"
     assert dup["CaminhoDestino"].replace("\\", "/").endswith("150/duplicada/1092_folha_150.pdf")
+
+
+def test_resumo_lista_folhas_faltando_e_gera_pendencias(tmp_path: Path) -> None:
+    import csv as _csv
+
+    from models.escritura_import import FolhaDestino, LivroPlano
+
+    def folha(n, dup=False):
+        return FolhaDestino(n, "conteudo", tmp_path / "x.pdf", 1, status="Gerada", duplicada=dup)
+
+    # livro 1107: tem 1..400 menos as folhas 61 e 361; folha 5 duplicada
+    presentes = [n for n in range(1, 401) if n not in (61, 361)]
+    plano = LivroPlano(
+        numero=1107, pasta_origem=tmp_path, pasta_destino=tmp_path / "out" / "revisar" / "1107",
+        folhas=[folha(n) for n in presentes] + [folha(5, dup=True)],
+        anexos=[], total_folhas_conteudo=len(presentes) - 2, ultima_folha_conteudo=400,
+        diagnostico="revisar",
+    )
+    repo = EscrituraImportRepository(tmp_path / "reports", tmp_path / "progress", folhas_por_livro=400)
+    resumo = repo.salvar_resumo([plano], "20260902_000000")
+
+    linha = next(_csv.DictReader(resumo.read_text(encoding="utf-8-sig").splitlines(), delimiter=";"))
+    assert linha["FolhasFaltando"] == "61, 361"
+    assert linha["FolhasDuplicadas"] == "5"
+
+    pend = resumo.with_name("Importacao_pendencias_20260902_000000.csv")
+    assert pend.exists()
+    rows = list(_csv.DictReader(pend.read_text(encoding="utf-8-sig").splitlines(), delimiter=";"))
+    faltando = {r["Folha"] for r in rows if r["Tipo"] == "faltando"}
+    assert faltando == {"61", "361"}
+    assert any(r["Tipo"] == "duplicada" and r["Folha"] == "5" for r in rows)

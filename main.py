@@ -88,7 +88,10 @@ def main() -> int:
         config, inventory_repository, split_repository, rename_template_service, PdfSplitterService()
     )
 
-    escritura_repository = EscrituraImportRepository(config.reports_dir, config.progress_dir)
+    escritura_repository = EscrituraImportRepository(
+        config.reports_dir, config.progress_dir,
+        folhas_por_livro=config.escritura_folhas_por_livro,
+    )
     escritura_module = EscrituraImportModule(
         config,
         EscrituraScannerService(),
@@ -111,7 +114,8 @@ def main() -> int:
         EscrituraScannerService(),
         leitor_codigo,
         EscrituraImportRepository(
-            config.reports_dir, config.progress_dir, "escritura_importacao_codigo.json"
+            config.reports_dir, config.progress_dir, "escritura_importacao_codigo.json",
+            folhas_por_livro=config.escritura_folhas_por_livro,
         ),
         rename_template_service,
         EscrituraImporterService(),

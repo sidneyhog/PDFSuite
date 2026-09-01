@@ -129,7 +129,8 @@ class EscrituraImportCodigoModule:
         if planos:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             caminho = self._repository.salvar_resumo(planos, ts)
-            self._resumo_geral(planos, dry_run, caminho)
+            pend = caminho.with_name(f"Importacao_pendencias_{ts}.csv")
+            self._resumo_geral(planos, dry_run, caminho, pend if pend.exists() else None)
 
     # ---------------- libs ---------------- #
 
@@ -231,7 +232,8 @@ class EscrituraImportCodigoModule:
         print(f"    -> {geradas} folhas, {anexos_ok} anexos, {erros} erro(s) em '{plano.pasta_destino}'")
 
     @staticmethod
-    def _resumo_geral(planos: list[LivroPlano], dry_run: bool, csv_path: Path) -> None:
+    def _resumo_geral(planos: list[LivroPlano], dry_run: bool, csv_path: Path,
+                      pendencias_path: Optional[Path]) -> None:
         por_diag: dict[str, int] = {}
         for p in planos:
             por_diag[p.diagnostico] = por_diag.get(p.diagnostico, 0) + 1
@@ -242,4 +244,7 @@ class EscrituraImportCodigoModule:
             if d in por_diag:
                 print(f"  {d:<12}: {por_diag[d]} livro(s)")
         print("=" * 60)
-        print(f" Relatorio: {csv_path}\n")
+        print(f" Resumo    : {csv_path}")
+        if pendencias_path is not None:
+            print(f" Pendencias: {pendencias_path}  (folha faltando / duplicada / conflito, 1 por linha)")
+        print()

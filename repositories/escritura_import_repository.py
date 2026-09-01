@@ -11,6 +11,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from models.escritura_import import LivroPlano
 
@@ -22,17 +23,38 @@ _COLUNAS_LIVRO = [
 ]
 _COLUNAS_RESUMO = [
     "Livro", "Diagnostico", "PastaSaida", "FolhasConteudo", "UltimaFolha",
-    "FolhasGeradas", "AnexosCopiados", "Erros", "Avisos",
+    "FolhasGeradas", "AnexosCopiados", "Erros", "FolhasFaltando",
+    "FolhasDuplicadas", "Conflitos", "Avisos",
 ]
+_COLUNAS_PENDENCIAS = ["Livro", "Diagnostico", "Tipo", "Folha", "Detalhe"]
+
+
+def _faixas(numeros: list[int]) -> str:
+    """[2,3,4,7,9,10] -> '2-4, 7, 9-10' (compacta faixas contiguas)."""
+    if not numeros:
+        return ""
+    numeros = sorted(set(numeros))
+    partes: list[str] = []
+    ini = ant = numeros[0]
+    for n in numeros[1:]:
+        if n == ant + 1:
+            ant = n
+            continue
+        partes.append(str(ini) if ini == ant else f"{ini}-{ant}")
+        ini = ant = n
+    partes.append(str(ini) if ini == ant else f"{ini}-{ant}")
+    return ", ".join(partes)
 
 
 class EscrituraImportRepository:
     def __init__(
         self, reports_dir: Path, progress_dir: Path,
         progress_nome: str = "escritura_importacao.json",
+        folhas_por_livro: int = 400,
     ) -> None:
         self._reports_dir = reports_dir
         self._progress_path = progress_dir / progress_nome
+        self._total = folhas_por_livro
 
     # ---------------- retomada ---------------- #
 
@@ -88,9 +110,23 @@ class EscrituraImportRepository:
         logger.info("Rastreabilidade do livro %d salva em '%s'.", plano.numero, destino)
         return destino
 
+    @staticmethod
+    def _folhas_faltando(plano: LivroPlano, total: int) -> list[int]:
+        presentes = {f.numero for f in plano.folhas if not f.duplicada and f.status != "Erro"}
+        return [n for n in range(1, total + 1) if n not in presentes]
+
+    @staticmethod
+    def _folhas_duplicadas(plano: LivroPlano) -> dict[int, int]:
+        contagem: dict[int, int] = {}
+        for f in plano.folhas:
+            if f.duplicada:
+                contagem[f.numero] = contagem.get(f.numero, 0) + 1
+        return contagem
+
     def salvar_resumo(self, planos: list[LivroPlano], timestamp: str) -> Path:
         self._reports_dir.mkdir(parents=True, exist_ok=True)
         destino = self._reports_dir / f"Importacao_resumo_{timestamp}.csv"
+        total = self._total
         with open(destino, "w", newline="", encoding="utf-8-sig") as arquivo:
             escritor = csv.writer(arquivo, delimiter=";")
             escritor.writerow(_COLUNAS_RESUMO)
@@ -99,10 +135,41 @@ class EscrituraImportRepository:
                 anexos_ok = sum(1 for a in p.anexos if a.status == "Copiado")
                 erros = sum(1 for f in p.folhas if f.status == "Erro") + \
                     sum(1 for a in p.anexos if a.status == "Erro")
+                faltando = self._folhas_faltando(p, total)
+                dups = self._folhas_duplicadas(p)
                 escritor.writerow([
                     p.numero, p.diagnostico, str(p.pasta_destino),
                     p.total_folhas_conteudo, p.ultima_folha_conteudo,
-                    geradas, anexos_ok, erros, " | ".join(p.avisos),
+                    geradas, anexos_ok, erros,
+                    _faixas(faltando), _faixas(sorted(dups)), len(getattr(p, "conflitos", [])),
+                    " | ".join(p.avisos),
                 ])
         logger.info("Resumo da importacao salvo em '%s'.", destino)
+        self._salvar_pendencias(planos, timestamp, total)
+        return destino
+
+    def _salvar_pendencias(self, planos: list[LivroPlano], timestamp: str, total: int) -> Optional[Path]:
+        """Um arquivo dedicado, uma linha por pendencia (folha faltando,
+        duplicada, conflito, termo ausente) - para o escrevente filtrar/pivotar.
+        So e gerado se houver ao menos uma pendencia.
+        """
+        linhas: list[list] = []
+        for p in planos:
+            for folha in self._folhas_faltando(p, total):
+                rotulo = {1: "termo de abertura", total: "termo de encerramento"}.get(folha, "")
+                linhas.append([p.numero, p.diagnostico, "faltando", folha, rotulo])
+            for folha, extra in sorted(self._folhas_duplicadas(p).items()):
+                linhas.append([p.numero, p.diagnostico, "duplicada", folha,
+                               f"{extra} copia(s) extra em {p.pasta_destino}\\{folha:03d}\\duplicada"])
+            for origem, pagina, (livro_lido, folha_lida) in getattr(p, "conflitos", []):
+                linhas.append([p.numero, p.diagnostico, "conflito", folha_lida,
+                               f"codigo do livro {livro_lido} - {origem} p.{pagina}"])
+        if not linhas:
+            return None
+        destino = self._reports_dir / f"Importacao_pendencias_{timestamp}.csv"
+        with open(destino, "w", newline="", encoding="utf-8-sig") as arquivo:
+            escritor = csv.writer(arquivo, delimiter=";")
+            escritor.writerow(_COLUNAS_PENDENCIAS)
+            escritor.writerows(linhas)
+        logger.info("Pendencias da importacao salvas em '%s' (%d linha(s)).", destino, len(linhas))
         return destino
