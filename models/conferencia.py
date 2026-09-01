@@ -41,4 +41,5 @@ class ConferenciaLivro:
     sem_codigo: int = 0
     diagnostico_depois: str = ""
     movido_para: Optional[Path] = None      # se o livro mudou de pasta de diagnostico
+    abortado_guard: bool = False            # True = era 'ok' e a conferencia daria pior; nao aplicada
     avisos: list[str] = field(default_factory=list)

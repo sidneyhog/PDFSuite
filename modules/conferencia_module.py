@@ -1,7 +1,12 @@
 """Modulo 'Conferir folhas pelo codigo do rodape': roda sobre a saida do
 modulo de importacao de escrituras (`<destino>/<diagnostico>/<livro>/...`)
 e corrige a numeracao das pastas usando o codigo real lido de cada
-pagina (camada de texto do PDF ou barcode Code 39 do rodape).
+pagina (camada de texto do PDF, barcode Code 39 ou OCR do rodape).
+
+Trava de seguranca: um livro que a importacao ja fechou como 'ok' nunca
+e rebaixado - se a leitura de codigo discordar, a estrutura e mantida e
+o livro fica marcado para conferencia manual (quase sempre e falha de
+leitura de barcode, nao problema real do livro).
 
 Corrige NO LUGAR (nao duplica em disco). Os originais na rede nunca sao
 tocados. Tem modo de simulacao e e retomavel por livro.
@@ -136,22 +141,43 @@ class ConferenciaModule:
 
     def _garantir_libs(self) -> bool:
         ok, msg = self._leitor.disponivel()
-        if ok:
-            return True
-        print(f"\n{msg}\n")
-        if not self._sn("Instalar agora (pip install pypdfium2 zxing-cpp pillow)? [S]/[N]: ", padrao=True):
-            return False
-        print("Instalando...")
-        rc = subprocess.call(
-            [sys.executable, "-m", "pip", "install", "pypdfium2", "zxing-cpp", "pillow"]
-        )
-        if rc != 0:
-            print("\nFalha na instalacao. Instale manualmente e tente de novo.\n")
-            return False
-        ok, msg = self._leitor.disponivel()
         if not ok:
             print(f"\n{msg}\n")
-        return ok
+            if not self._sn("Instalar agora (pip install pypdfium2 zxing-cpp pillow)? [S]/[N]: ", padrao=True):
+                return False
+            print("Instalando...")
+            rc = subprocess.call(
+                [sys.executable, "-m", "pip", "install", "pypdfium2", "zxing-cpp", "pillow"]
+            )
+            if rc != 0:
+                print("\nFalha na instalacao. Instale manualmente e tente de novo.\n")
+                return False
+            ok, msg = self._leitor.disponivel()
+            if not ok:
+                print(f"\n{msg}\n")
+                return False
+
+        self._garantir_ocr()
+        return True
+
+    def _garantir_ocr(self) -> None:
+        """OCR e um fallback opcional: recupera folhas cujo barcode nao decodifica
+        (foi o que rebaixou livros 'ok' na 1a rodada). Sem ele a conferencia roda,
+        so com barcode + camada de texto.
+        """
+        if self._leitor.ocr_disponivel():
+            return
+        print("\nFallback de OCR nao instalado (le os digitos impressos quando o")
+        print("barcode falha - evita rebaixar livro que estava 'ok').")
+        if not self._sn("Instalar agora (pip install rapidocr-onnxruntime, ~100 MB)? [S]/[N]: ", padrao=True):
+            print("Seguindo sem OCR.\n")
+            return
+        print("Instalando (pode demorar)...")
+        subprocess.call([sys.executable, "-m", "pip", "install", "rapidocr-onnxruntime"])
+        if self._leitor.ocr_disponivel():
+            print("OCR instalado.\n")
+        else:
+            print("OCR nao ficou disponivel; a conferencia segue so com barcode/texto.\n")
 
     # ---------------- perguntas ---------------- #
 
@@ -214,11 +240,14 @@ class ConferenciaModule:
         antes: dict[str, int] = {}
         depois: dict[str, int] = {}
         subiu = 0
+        travados = 0
         for r in resultados:
             antes[r.diagnostico_antes] = antes.get(r.diagnostico_antes, 0) + 1
             depois[r.diagnostico_depois] = depois.get(r.diagnostico_depois, 0) + 1
             if r.diagnostico_antes != "ok" and r.diagnostico_depois == "ok":
                 subiu += 1
+            if r.abortado_guard:
+                travados += 1
         print("\n" + "=" * 60)
         print(" RESUMO DA CONFERENCIA" + ("  (SIMULACAO)" if simular else ""))
         print("=" * 60)
@@ -227,5 +256,7 @@ class ConferenciaModule:
                 print(f"  {d:<12} {antes.get(d, 0):>3}  ->  {depois.get(d, 0):>3}")
         print("-" * 60)
         print(f"  viraram 'ok': {subiu}")
+        if travados:
+            print(f"  travados (eram 'ok', mantidos - conferir manual): {travados}")
         print("=" * 60)
         print(f" Relatorio: {csv_path}\n")

@@ -100,6 +100,31 @@ def test_conferencia_executa_e_corrige_as_pastas(arvore) -> None:
     assert res.diagnostico_depois == "ok"
 
 
+def test_conferencia_nao_rebaixa_livro_ok(tmp_path: Path) -> None:
+    """Livro que a importacao fechou como 'ok': se 1 folha nao le o codigo
+    (barcode/OCR falharam), a conferencia NAO pode rebaixar nem mover nada.
+    """
+    base = tmp_path / "s" / "ok" / "1200"
+    plano = {n: (f"1200_folha_{n:03d}.pdf", (1200, n)) for n in range(1, 9)}
+    plano[5] = ("1200_folha_005.pdf", None)          # folha real, mas codigo ilegivel
+    mapa = {}
+    for pasta, (nome, codigo) in plano.items():
+        _pdf(base / f"{pasta:03d}" / nome)
+        mapa[nome] = codigo
+    antes = {p.name: sorted(f.name for f in p.iterdir()) for p in base.iterdir()}
+
+    res = ConferenciaService(FakeLeitor(mapa), folhas_por_livro=8).conferir(
+        base, 1200, "ok", None, executar=True
+    )
+
+    assert res.abortado_guard is True
+    assert res.diagnostico_depois == "ok"
+    assert res.avisos and res.avisos[0].startswith("CONFERENCIA NAO APLICADA")
+    depois = {p.name: sorted(f.name for f in p.iterdir()) for p in base.iterdir()}
+    assert depois == antes                                     # nada foi movido
+    assert not (base / "_conferencia_tmp").exists()
+
+
 def test_conferencia_duplicata_vai_para_subpasta(tmp_path: Path) -> None:
     base = tmp_path / "s" / "quase" / "1090"
     _pdf(base / "010" / "1090_folha_010.pdf")

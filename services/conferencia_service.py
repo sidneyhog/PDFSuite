@@ -3,13 +3,16 @@
 Roda sobre a saida do modulo de importacao
 (`<destino>/<diagnostico>/<livro>/<NNN>/...`) e:
 
-  - le o codigo real de cada arquivo de folha gerado
+  - le o codigo real de cada arquivo de folha gerado (texto do PDF,
+    barcode ou OCR do rodape)
   - pagina sem codigo => nao e folha => vira anexo da primeira folha do
     arquivo de origem (usa o CSV Importacao_livro<N> para saber a origem)
   - pagina com codigo de outro livro => conflito
   - remonta as pastas pelo numero REAL da folha
   - duplicata (mesma folha 2x) => a 1a fica, as outras vao para NNN/duplicada/
   - re-diagnostica o livro no fim
+  - trava: livro que a importacao fechou como 'ok' nunca e rebaixado
+    (abortado_guard) - mantem a estrutura e marca para conferencia manual
 
 Modo simulacao: monta o plano e nao move nada.
 """
@@ -28,6 +31,9 @@ from services.codigo_folha_service import CodigoFolhaService
 logger = logging.getLogger("pdfsuite")
 
 _RE_PASTA = re.compile(r"^\d+$")
+
+# ranking dos diagnosticos (menor = melhor) para a trava anti-regressao
+_ORDEM_DIAG = {"ok": 0, "quase": 1, "revisar": 2, "manual": 3, "incompleto": 3, "vazio": 4}
 
 
 def _eh_folha_gerada(nome: str, numero_livro: int) -> bool:
@@ -138,8 +144,27 @@ class ConferenciaService:
 
         res.diagnostico_depois = self._rediagnosticar(res)
 
+        # 4b. trava anti-regressao: a conferencia NUNCA pode piorar um livro que a
+        # importacao ja fechou como 'ok' (398 folhas exatas + os dois termos). Quando
+        # isso acontece e quase sempre falha de leitura de codigo (barcode/OCR que nao
+        # decodificou), nao problema real do livro. Mantem a estrutura como veio e
+        # sinaliza para conferencia manual.
+        if (diagnostico_antes == "ok"
+                and _ORDEM_DIAG.get(res.diagnostico_depois, 9) > _ORDEM_DIAG["ok"]):
+            res.abortado_guard = True
+            res.avisos.insert(0, (
+                "CONFERENCIA NAO APLICADA: a leitura de codigo daria '%s' "
+                "(sem_codigo=%d, duplicadas=%d, faltando=%d), mas a importacao "
+                "validou este livro como 'ok'. Estrutura mantida como veio; "
+                "conferir manualmente." % (
+                    res.diagnostico_depois, res.sem_codigo,
+                    sum(res.duplicadas.values()), len(res.faltando),
+                )
+            ))
+            res.diagnostico_depois = "ok"
+
         # 5. executa (move de verdade)
-        if executar:
+        if executar and not res.abortado_guard:
             self._executar(res)
 
         return res

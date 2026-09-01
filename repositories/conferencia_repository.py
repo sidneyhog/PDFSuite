@@ -17,7 +17,7 @@ _COLUNAS_LIVRO = [
     "FolhaDestino", "Acao", "CaminhoDestino",
 ]
 _COLUNAS_RESUMO = [
-    "Livro", "DiagAntes", "DiagDepois", "FolhasReais", "Duplicadas",
+    "Livro", "DiagAntes", "DiagDepois", "Aplicada", "FolhasReais", "Duplicadas",
     "SemCodigo", "OutroLivro", "Faltando", "MovidoPara", "Avisos",
 ]
 
@@ -49,6 +49,7 @@ class ConferenciaRepository:
             for r in resultados:
                 w.writerow([
                     r.numero, r.diagnostico_antes, r.diagnostico_depois,
+                    "nao" if r.abortado_guard else "sim",
                     len(r.folhas_reais), sum(r.duplicadas.values()), r.sem_codigo,
                     r.outro_livro, len(r.faltando),
                     str(r.movido_para) if r.movido_para else "",
