@@ -11,3 +11,7 @@ pillow>=10.0
 # impressos ao lado do barcode - recupera folhas cujo codigo de barras nao
 # decodifica. Tudo pip (onnxruntime + opencv), ~100 MB, roda offline.
 rapidocr-onnxruntime>=1.3,<2.0
+
+# Relatorio de escrituras para o escrevente (opcao 12) - planilha .xlsx com
+# abas. Se ausente, o modulo sai um conjunto de .csv (um por aba).
+openpyxl>=3.1,<4.0

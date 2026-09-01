@@ -17,6 +17,7 @@ from modules.config_module import ConfigModule
 from modules.copy_module import CopyModule
 from modules.escritura_import_codigo_module import EscrituraImportCodigoModule
 from modules.escritura_import_module import EscrituraImportModule
+from modules.escritura_relatorio_module import EscrituraRelatorioModule
 from modules.inventory_module import InventoryModule
 from modules.menu import Menu, MenuOption
 from modules.merge_module import MergeModule
@@ -26,12 +27,14 @@ from modules.split_module import SplitModule
 from repositories.conferencia_repository import ConferenciaRepository
 from repositories.config_repository import ConfigRepository
 from repositories.escritura_import_repository import EscrituraImportRepository
+from repositories.escritura_relatorio_repository import EscrituraRelatorioRepository
 from repositories.inventory_repository import InventoryRepository
 from repositories.progress_repository import ProgressRepository
 from repositories.rename_repository import RenameRepository
 from repositories.split_repository import SplitRepository
 from services.codigo_folha_service import CodigoFolhaService
 from services.escritura_importer_service import EscrituraImporterService
+from services.escritura_relatorio_service import EscrituraRelatorioService
 from services.escritura_scanner_service import EscrituraScannerService
 from services.hasher_service import HasherService
 from services.inventory_service import InventoryService
@@ -121,6 +124,12 @@ def main() -> int:
         EscrituraImporterService(),
     )
 
+    escritura_relatorio_module = EscrituraRelatorioModule(
+        config,
+        EscrituraRelatorioService(config.escritura_folhas_por_livro),
+        EscrituraRelatorioRepository(config.reports_dir, config.escritura_folhas_por_livro),
+    )
+
     menu = Menu(
         [
             MenuOption("1", "Inventario", inventory_module.run),
@@ -134,8 +143,9 @@ def main() -> int:
             MenuOption("9", "Preparar livros de escrituras para importacao", escritura_module.run),
             MenuOption("10", "Conferir folhas pelo codigo do rodape", conferencia_module.run),
             MenuOption("11", "Importar escrituras por codigo (copia+separa+confere)", escritura_codigo_module.run),
+            MenuOption("12", "Relatorio de escrituras para o escrevente", escritura_relatorio_module.run),
         ],
-        sair_numero="12",
+        sair_numero="13",
     )
 
     try:

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 from models.escritura_import import LivroPlano
+from services.util_faixas import faixas as _faixas
 
 logger = logging.getLogger("pdfsuite")
 
@@ -27,23 +28,6 @@ _COLUNAS_RESUMO = [
     "FolhasDuplicadas", "Conflitos", "Avisos",
 ]
 _COLUNAS_PENDENCIAS = ["Livro", "Diagnostico", "Tipo", "Folha", "Detalhe"]
-
-
-def _faixas(numeros: list[int]) -> str:
-    """[2,3,4,7,9,10] -> '2-4, 7, 9-10' (compacta faixas contiguas)."""
-    if not numeros:
-        return ""
-    numeros = sorted(set(numeros))
-    partes: list[str] = []
-    ini = ant = numeros[0]
-    for n in numeros[1:]:
-        if n == ant + 1:
-            ant = n
-            continue
-        partes.append(str(ini) if ini == ant else f"{ini}-{ant}")
-        ini = ant = n
-    partes.append(str(ini) if ini == ant else f"{ini}-{ant}")
-    return ", ".join(partes)
 
 
 class EscrituraImportRepository:
