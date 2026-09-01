@@ -100,6 +100,108 @@ class CodigoFolhaService:
             return do_barcode
         return self._pelo_ocr(pdf_path, pagina)
 
+    def identificar_paginas(self, pdf_path: Path) -> list[Optional[tuple[int, int]]]:
+        """Le o codigo de TODAS as paginas de um PDF, uma passada por metodo
+        (abre o arquivo o minimo possivel). Retorna uma lista do tamanho do
+        PDF: (livro, folha) ou None por pagina.
+        """
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(str(pdf_path))
+            paginas = reader.pages
+            n = len(paginas)
+        except Exception as erro:
+            logger.debug("Nao consegui abrir '%s' para ler codigos: %s", pdf_path, erro)
+            return []
+
+        resultado: list[Optional[tuple[int, int]]] = [None] * n
+
+        # 1. camada de texto (barata)
+        for i in range(n):
+            try:
+                texto = paginas[i].extract_text() or ""
+            except Exception:
+                texto = ""
+            resultado[i] = _extrair(texto)
+
+        faltam = [i for i in range(n) if resultado[i] is None]
+        if not faltam:
+            return resultado
+
+        # 2. barcode - abre o pdfium uma vez
+        doc = None
+        try:
+            if self._zxing is None:
+                import zxingcpp
+                self._zxing = zxingcpp
+            if self._pdfium is None:
+                import pypdfium2 as pdfium
+                self._pdfium = pdfium
+            doc = self._pdfium.PdfDocument(str(pdf_path))
+        except Exception as erro:
+            logger.debug("Barcode indisponivel para '%s': %s", pdf_path, erro)
+            doc = None
+
+        ainda_faltam: list[int] = []
+        for i in faltam:
+            imagem = self._render_pagina_do_doc(doc, i) if doc is not None else None
+            achou = self._ler_barcode_imagem(imagem) if imagem is not None else None
+            if achou is not None:
+                resultado[i] = achou
+            else:
+                ainda_faltam.append((i, imagem))
+
+        if doc is not None:
+            try:
+                doc.close()
+            except Exception:
+                pass
+
+        # 3. OCR do rodape - so no que sobrou
+        engine = self._get_ocr()
+        if engine is not None:
+            try:
+                import numpy as np
+            except ImportError:
+                np = None
+            if np is not None:
+                for i, imagem in ainda_faltam:
+                    if imagem is None:
+                        imagem = self._imagem_pagina(pdf_path, i)
+                    if imagem is None:
+                        continue
+                    largura, altura = imagem.size
+                    rodape = imagem.crop((0, int(altura * 0.80), largura, altura))
+                    try:
+                        linhas, _ = engine(np.array(rodape))
+                    except Exception:
+                        linhas = None
+                    if linhas:
+                        resultado[i] = _extrair_ocr("".join(str(l[1]) for l in linhas))
+
+        return resultado
+
+    def _render_pagina_do_doc(self, doc, indice: int):
+        try:
+            if indice >= len(doc):
+                return None
+            return doc[indice].render(scale=self._dpi / 72).to_pil()
+        except Exception as erro:
+            logger.debug("Falha ao renderizar pagina %d: %s", indice, erro)
+            return None
+
+    def _ler_barcode_imagem(self, imagem) -> Optional[tuple[int, int]]:
+        if imagem is None or self._zxing is None:
+            return None
+        largura, altura = imagem.size
+        rodape = imagem.crop((0, int(altura * 0.86), largura, altura))
+        for regiao in (rodape, imagem):
+            for codigo in self._zxing.read_barcodes(regiao):
+                achou = _extrair(codigo.text)
+                if achou is not None:
+                    return achou
+        return None
+
     def disponivel(self) -> tuple[bool, str]:
         """(ok, mensagem) - False se faltam as libs de render/barcode."""
         try:
@@ -167,16 +269,7 @@ class CodigoFolhaService:
         except ImportError:
             return None
         imagem = self._imagem_pagina(pdf_path, pagina)
-        if imagem is None:
-            return None
-        largura, altura = imagem.size
-        rodape = imagem.crop((0, int(altura * 0.86), largura, altura))
-        for regiao in (rodape, imagem):
-            for codigo in self._zxing.read_barcodes(regiao):
-                achou = _extrair(codigo.text)
-                if achou is not None:
-                    return achou
-        return None
+        return self._ler_barcode_imagem(imagem)
 
     def _get_ocr(self):
         if self._ocr is False:

@@ -61,8 +61,10 @@ class EscrituraImporterService:
                     folha.erro = erro
                     logger.error("Folha %d do livro %d: %s", folha.numero, plano.numero, erro)
 
-        # --- anexos: copia preservando metadados ---
+        # --- anexos arquivo-inteiro: copia preservando metadados ---
         for anexo in plano.anexos:
+            if anexo.pagina_origem is not None:
+                continue
             pasta = anexo.caminho_destino.parent
             pasta.mkdir(parents=True, exist_ok=True)
             nome_final = naming_da_pasta(pasta).proximo_nome_disponivel(anexo.nome_destino)
@@ -75,3 +77,28 @@ class EscrituraImporterService:
                 anexo.status = "Erro"
                 anexo.erro = str(erro)
                 logger.error("Anexo '%s' do livro %d: %s", anexo.origem.name, plano.numero, erro)
+
+        # --- anexos de 1 pagina (fluxo por codigo): extrai a pagina do PDF de origem ---
+        por_origem_anexo: dict[Path, list] = defaultdict(list)
+        for anexo in plano.anexos:
+            if anexo.pagina_origem is not None:
+                por_origem_anexo[anexo.origem].append(anexo)
+        for origem, lista in por_origem_anexo.items():
+            pedidos = []
+            for anexo in lista:
+                pasta = anexo.caminho_destino.parent
+                pasta.mkdir(parents=True, exist_ok=True)
+                nome_final = naming_da_pasta(pasta).proximo_nome_disponivel(anexo.nome_destino)
+                anexo.nome_destino = nome_final
+                anexo.caminho_destino = pasta / nome_final
+                pedidos.append((anexo.pagina_origem, anexo.caminho_destino))
+            erro_por_pagina = {p: e for p, e in self._splitter.split(origem, pedidos)}
+            for anexo in lista:
+                erro = erro_por_pagina.get(anexo.pagina_origem)
+                if erro is None:
+                    anexo.status = "Copiado"
+                else:
+                    anexo.status = "Erro"
+                    anexo.erro = erro
+                    logger.error("Anexo p.%s de '%s' (livro %d): %s",
+                                 anexo.pagina_origem, origem.name, plano.numero, erro)

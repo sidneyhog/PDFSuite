@@ -27,9 +27,12 @@ _COLUNAS_RESUMO = [
 
 
 class EscrituraImportRepository:
-    def __init__(self, reports_dir: Path, progress_dir: Path) -> None:
+    def __init__(
+        self, reports_dir: Path, progress_dir: Path,
+        progress_nome: str = "escritura_importacao.json",
+    ) -> None:
         self._reports_dir = reports_dir
-        self._progress_path = progress_dir / "escritura_importacao.json"
+        self._progress_path = progress_dir / progress_nome
 
     # ---------------- retomada ---------------- #
 
@@ -70,7 +73,13 @@ class EscrituraImportRepository:
                 escritor.writerow([
                     plano.numero, a.folha_destino, "anexo",
                     a.caminho_destino.parent.name if a.caminho_destino else "",
-                    a.nome_destino, str(a.origem), "", a.status, a.erro,
+                    a.nome_destino, str(a.origem), a.pagina_origem or "", a.status, a.erro,
+                ])
+            for origem, pagina, (livro_lido, folha_lida) in getattr(plano, "conflitos", []):
+                escritor.writerow([
+                    plano.numero, "", "conflito", "", "",
+                    str(origem), pagina, "Fora do plano",
+                    f"codigo do livro {livro_lido} folha {folha_lida}",
                 ])
         logger.info("Rastreabilidade do livro %d salva em '%s'.", plano.numero, destino)
         return destino

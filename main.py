@@ -15,6 +15,7 @@ from modules.audit_module import AuditModule
 from modules.conferencia_module import ConferenciaModule
 from modules.config_module import ConfigModule
 from modules.copy_module import CopyModule
+from modules.escritura_import_codigo_module import EscrituraImportCodigoModule
 from modules.escritura_import_module import EscrituraImportModule
 from modules.inventory_module import InventoryModule
 from modules.menu import Menu, MenuOption
@@ -97,10 +98,23 @@ def main() -> int:
         EscrituraImporterService(),
     )
 
+    leitor_codigo = CodigoFolhaService()
+
     conferencia_module = ConferenciaModule(
         config,
-        CodigoFolhaService(),
+        leitor_codigo,
         ConferenciaRepository(config.reports_dir),
+    )
+
+    escritura_codigo_module = EscrituraImportCodigoModule(
+        config,
+        EscrituraScannerService(),
+        leitor_codigo,
+        EscrituraImportRepository(
+            config.reports_dir, config.progress_dir, "escritura_importacao_codigo.json"
+        ),
+        rename_template_service,
+        EscrituraImporterService(),
     )
 
     menu = Menu(
@@ -115,8 +129,9 @@ def main() -> int:
             MenuOption("8", "Configuracoes", config_module.run),
             MenuOption("9", "Preparar livros de escrituras para importacao", escritura_module.run),
             MenuOption("10", "Conferir folhas pelo codigo do rodape", conferencia_module.run),
+            MenuOption("11", "Importar escrituras por codigo (copia+separa+confere)", escritura_codigo_module.run),
         ],
-        sair_numero="11",
+        sair_numero="12",
     )
 
     try:

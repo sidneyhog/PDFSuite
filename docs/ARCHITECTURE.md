@@ -46,7 +46,7 @@ models/        dataclasses + enums puros. Zero dependências de outras camadas.
 - `models/config.py` — `AppConfig` (equivalente tipado do `config.json`).
 - `models/rename_plan.py` — `RenamePlanItem` (um item planejado do módulo de Renomeação: origem, livro, página, nome novo, destino, status).
 - `models/split_plan.py` — `SplitPlanItem` (um item planejado do módulo de Separação: **uma página** a extrair — origem, livro, total de páginas, número da página, nome novo, destino, status).
-- `models/escritura_import.py` — `LivroOrigem` (pasta de livro classificada), `LivroPlano` (plano completo de importação), `FolhaDestino` / `AnexoDestino` (um arquivo de saída cada).
+- `models/escritura_import.py` — `LivroOrigem` (pasta de livro classificada), `LivroPlano` (plano completo de importação, com `conflitos`), `FolhaDestino` (com `duplicada`) / `AnexoDestino` (`pagina_origem=None` → copia o arquivo inteiro; `int` → extrai só aquela página). Compartilhado pelas opções 9 e 11.
 - `models/conferencia.py` — `ItemConferido` (um PDF encontrado numa pasta de folha + o que foi lido dele), `ConferenciaLivro` (resultado da conferência de um livro: folhas reais, duplicatas, faltando, diagnóstico antes/depois).
 
 ## Fluxo de execução — módulo de Inventário
@@ -256,4 +256,5 @@ Um app CLI deste porte não justifica um framework de injeção de dependência 
 7. Relatórios/estatísticas avançadas.
 8. OCR — interface (`OcrEngine`) já preparada; implementação real fica para quando houver necessidade real.
 9. ✅ Preparação de livros de escrituras para importação — módulo especializado no acervo `2_Livros` do cartório. Scanner + planejador puro + importador; diagnóstico por livro; faixa de livros; retomável; modo simulação. Reaproveita `PdfSplitterService`, `PdfInspectorService`, `NamingService`, `RenameTemplateService`.
-10. ✅ Conferência de folhas pelo código do rodapé — lê o código impresso (`SP0869` + livro + folha) de cada página (texto do PDF → barcode Code 39), corrige a numeração das pastas no lugar, separa anexos escaneados dentro de arquivos de folha, trata duplicatas e re-diagnostica. É a implementação real da ideia por trás de `OcrEngine`.
+10. ✅ Conferência de folhas pelo código do rodapé — lê o código impresso (`SP0869` + livro + folha) de cada página (texto do PDF → barcode Code 39 → OCR do rodapé), corrige a numeração das pastas no lugar, separa anexos escaneados dentro de arquivos de folha, trata duplicatas e re-diagnostica. Trava anti-regressão: livro que a importação fechou como `ok` nunca é rebaixado. É a implementação real da ideia por trás de `OcrEngine`.
+11. ✅ Importação de escrituras **por código** — faz cópia + separação + conferência num passo só. Para cada página de cada arquivo de folha, `CodigoFolhaService.identificar_paginas()` lê o código do rodapé e o `EscrituraCodigoPlannerService` (puro) posiciona a página na folha real; página sem código vira anexo da folha corrente; código de outro livro é conflito. Elimina o "drift" posicional dos livros de 2013 e dispensa a etapa 10. Reaproveita scanner, `PdfSplitterService`, `NamingService`, `EscrituraImporterService` e o `EscrituraImportRepository` (progress próprio).

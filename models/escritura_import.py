@@ -56,11 +56,15 @@ class FolhaDestino:
     caminho_destino: Optional[Path] = None
     status: str = "Pendente"            # Pendente / Gerada / Erro
     erro: str = ""
+    duplicada: bool = False             # 2a+ pagina que reivindica a mesma folha -> <folha>/duplicada/
 
 
 @dataclass
 class AnexoDestino:
-    """Um anexo copiado para a pasta da primeira folha do seu arquivo `1_`."""
+    """Um anexo na pasta de uma folha. `pagina_origem` = None -> copia o
+    arquivo inteiro (anexo pre-existente 2_/3_/pasta_); int -> extrai so
+    aquela pagina do PDF de origem (pagina sem codigo no fluxo por codigo).
+    """
 
     origem: Path
     folha_destino: int
@@ -68,6 +72,7 @@ class AnexoDestino:
     caminho_destino: Optional[Path] = None
     status: str = "Pendente"            # Pendente / Copiado / Erro
     erro: str = ""
+    pagina_origem: Optional[int] = None
 
 
 @dataclass
@@ -83,8 +88,9 @@ class LivroPlano:
     anexos: list[AnexoDestino]
     total_folhas_conteudo: int          # quantas folhas 2..N foram geradas
     ultima_folha_conteudo: int          # deveria ser 399
-    diagnostico: str                    # 'ok' | 'revisar' | 'manual' | 'incompleto' | 'vazio'
+    diagnostico: str                    # 'ok' | 'quase' | 'revisar' | 'manual' | 'incompleto' | 'vazio'
     avisos: list[str] = field(default_factory=list)
+    conflitos: list = field(default_factory=list)   # (origem, pagina, (livro_lido, folha_lida)) - codigo de outro livro
 
     @property
     def automatizavel(self) -> bool:
