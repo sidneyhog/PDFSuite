@@ -14,12 +14,15 @@ O `CopiarPDFs.ps1` (PowerShell) continua existindo, intocado, como ferramenta le
 | 2 | Copiar PDFs | ✅ Ponte para o `CopiarPDFs.ps1` |
 | 3 | Renomear PDFs | ✅ Completo e funcional |
 | 4 | Separar páginas | ✅ Completo e funcional |
-| 5 | Unir PDFs | 🔜 Próxima sessão |
-| 6 | Auditoria | 🔜 Próxima sessão |
-| 7 | Relatórios | 🔜 Próxima sessão |
+| 5 | Unir PDFs | 🔜 Planejado (stub no menu) |
+| 6 | Auditoria | 🔜 Planejado (stub no menu) |
+| 7 | Relatórios / estatísticas genéricas do acervo | 🔜 Planejado (stub no menu) — não confundir com a opção 12 |
 | 8 | Configurações | ✅ Exibição somente-leitura |
-| 9 | Preparar livros de escrituras para importação | ✅ Completo e funcional |
+| 9 | Preparar livros de escrituras para importação (por posição) | ✅ Completo e funcional |
 | 10 | Conferir folhas pelo código do rodapé | ✅ Completo e funcional |
+| 11 | Importar escrituras pelo código do rodapé (copia + separa + confere num passo) | ✅ Completo e funcional |
+| 12 | Relatório de escrituras para o escrevente (`.xlsx`/`.csv`) | ✅ Completo e funcional |
+| 13 | Tratar conflitos e validar a saída de escrituras | ✅ Completo e funcional |
 | — | OCR | ✅ Em uso como etapa final da leitura do código do rodapé (fallback RapidOCR nos módulos 10 e 11, quando a camada de texto e o barcode falham). A interface genérica `OcrEngine` (`services/ocr_engine.py`), para OCR de texto livre em módulos futuros, segue reservada. |
 
 ## Requisitos
@@ -187,7 +190,41 @@ Por livro (`CodigoFolhaService` + `ConferenciaService`):
 
 Corrige **no lugar** (não duplica em disco — moves na mesma unidade são instantâneos). Os originais na rede **nunca são tocados**. Tem **modo simulação** (mostra o de-para, não move nada) e é **retomável por livro**. Gera `reports/Conferencia_livro<N>_<timestamp>.csv` (de-para) e um `Conferencia_resumo_<timestamp>.csv`.
 
-Dependências (já no `requirements.txt`, ou o módulo se oferece para instalar): `pypdfium2`, `zxing-cpp`, `pillow`.
+Dependências (já no `requirements.txt`, ou o módulo se oferece para instalar): `pypdfium2`, `zxing-cpp`, `pillow`. Fallback opcional de OCR (`rapidocr-onnxruntime`) para recuperar folhas cujo barcode não decodifica.
+
+## Módulo de Importação de escrituras pelo código do rodapé
+
+Alternativa à opção 9: em vez de posicionar as folhas pela **ordem** dos arquivos, decide a folha de cada página pelo **código impresso no rodapé** — cópia + separação + conferência num passo só, sem a etapa 10 depois. Elimina o deslocamento posicional dos livros mais antigos (uma folha a mais no meio do livro não empurra todas as seguintes).
+
+Para cada página de cada arquivo de folha, `CodigoFolhaService.identificar_paginas()` lê o código (camada de texto → barcode → OCR do rodapé) e o `EscrituraCodigoPlannerService` (lógica pura) posiciona a página na folha verdadeira. Página sem código vira **anexo da folha corrente**; página com código de **outro livro** entra como **conflito** (tratado na opção 13). Reaproveita o scanner, o `PdfSplitterService`, o `NamingService` e o `EscrituraImporterService`; progresso próprio em `progress/escritura_importacao_codigo.json`.
+
+Trabalha por **faixa de livros**, é **retomável**, tem **modo simulação** e, por padrão, agrupa a saída por diagnóstico. Lê da rede, grava no destino local, **nunca toca nos originais**. É mais lento que a opção 9 (renderiza cada página pela rede) — feito para rodar em lotes. Gera `reports/Importacao_livro<N>_<timestamp>.csv`, `Importacao_resumo_<timestamp>.csv` e `Importacao_pendencias_<timestamp>.csv` (folha faltando / duplicada / conflito, uma por linha).
+
+## Módulo de Relatório de escrituras para o escrevente
+
+**Não reprocessa nem abre PDF** — lê a árvore de saída já gerada (`<base>/<diagnóstico>/<livro>/`) e os `reports/Importacao_livro*.csv`, e consolida tudo numa planilha para o escrevente conferir o que sobrou.
+
+Com `openpyxl` instalado, sai um `.xlsx` único com seis abas:
+
+| Aba | Conteúdo |
+|---|---|
+| Resumo | Uma linha por livro, com `DiagnosticoReal` recalculado a partir do que está no disco (pode divergir do diagnóstico da importação) |
+| Folhas Faltando | Folhas que não existem na pasta do livro |
+| Duplicadas | Folhas com cópias extras em `NNN/duplicada/` |
+| Conflitos | Folha lida × livro do código, com `Situacao` e `AcaoSugerida` já cruzadas |
+| Anexos por Folha | Quantidade de anexos em cada folha |
+| Rastreabilidade | Folha → arquivo de origem no servidor |
+
+Sem `openpyxl`, gera os mesmos dados como um conjunto de `.csv` (um por aba) numa subpasta. `EscrituraRelatorioService` → `EscrituraRelatorioRepository`.
+
+## Módulo de Tratamento de conflitos e validação da saída
+
+Duas rotinas sobre a saída já processada, **sem apagar nada** e sem tocar nos originais da rede:
+
+1. **Conflitos** — páginas com código de **outro livro** (arquivadas na pasta errada no servidor). Quando a folha do código **falta** no livro correto, o módulo copia a página de origem para lá, **re-diagnostica** o livro e move a pasta de `revisar/` para `ok/` se ele fechou; a linha vira `Resolvido` no CSV. Casos ambíguos (a folha já existe, mais de um candidato) são apenas listados para conferência manual.
+2. **Validação** — cruza os `reports/Importacao_livro*.csv` com o disco: folha marcada `Gerada` que sumiu, arquivo órfão na pasta, e (opcional, mais lento) arquivo de origem que não existe mais na rede.
+
+`EscrituraConflitoService` → `EscrituraConflitoRepository` (`Conflitos_<timestamp>.csv`, `Validacao_<timestamp>.csv`).
 
 ## Testes
 
@@ -195,6 +232,8 @@ Dependências (já no `requirements.txt`, ou o módulo se oferece para instalar)
 python tests/generate_fixture_environment.py
 python -m pytest
 ```
+
+Suíte atual: **100 testes** em 15 arquivos (`tests/`), cobrindo os services de regra pura (planejadores de escrituras, templates, naming, leitura de código) e os módulos com lógica de decisão.
 
 `generate_fixture_environment.py` cria, em `tests/fixtures/`, um ambiente fictício com PDFs de 1 página, múltiplas páginas, corrompido, protegido por senha, vazio e duplicados — usado tanto pelos testes automatizados quanto para um teste manual rápido:
 
@@ -212,10 +251,12 @@ PDFSuite/
 ├── modules/                # controllers finos (menu + 1 arquivo por funcionalidade)
 ├── models/                 # dataclasses/enums puros (PdfRecord, AppConfig, RenamePlanItem, ...)
 ├── services/                # regra de negocio (Scanner, Hasher, PdfInspector, Inventory,
-│                            #   RenameTemplate, Naming, PdfSplitter, OCR-stub,
-│                            #   EscrituraScanner/Planner/Importer, CodigoFolha, Conferencia)
+│                            #   RenameTemplate, Naming, PdfSplitter, OCR-stub, CodigoFolha,
+│                            #   EscrituraScanner/Planner/CodigoPlanner/Importer,
+│                            #   Conferencia, EscrituraRelatorio, EscrituraConflito)
 ├── repositories/            # persistencia (Inventory, Config, Progress, Rename, Split,
-│                            #   EscrituraImport, Conferencia)
+│                            #   EscrituraImport, Conferencia, EscrituraRelatorio,
+│                            #   EscrituraConflito)
 ├── logs/ reports/ progress/ # saidas geradas em tempo de execucao
 ├── resources/                # reservado para recursos futuros (templates, icones de GUI)
 ├── docs/ARCHITECTURE.md      # arquitetura detalhada

@@ -16,12 +16,14 @@ modules/       controllers finos: menu + 1 arquivo por funcionalidade.
      │
 services/      regra de negócio pura, testável, sem I/O de console.
      │         (Scanner, Hasher, PdfInspector, Inventory, RenameTemplate,
-     │          Naming, PdfSplitter, OCR-stub, Logging,
-     │          EscrituraScanner / EscrituraPlanner / EscrituraImporter,
-     │          CodigoFolha, Conferencia)
+     │          Naming, PdfSplitter, OCR-stub, Logging, CodigoFolha,
+     │          EscrituraScanner / EscrituraPlanner / EscrituraCodigoPlanner /
+     │          EscrituraImporter, Conferencia, EscrituraRelatorio,
+     │          EscrituraConflito)
      │
 repositories/  persistência: Inventory (CSV+JSON), Config, Progress, Rename,
-     │         Split, EscrituraImport, Conferencia. A parte "suja" (I/O).
+     │         Split, EscrituraImport, Conferencia, EscrituraRelatorio,
+     │         EscrituraConflito. A parte "suja" (I/O).
      │
 models/        dataclasses + enums puros. Zero dependências de outras camadas.
 ```
@@ -223,6 +225,78 @@ main.py → Menu → "10 - Conferir folhas ..." → modules/conferencia_module.p
 ```
 
 O `EscrituraDestino` (`C:\Temp`) é reescrito **no lugar** (restrição de disco do cartório). Os originais na rede continuam intocados — pior caso, refaz a importação do zero. O `CodigoFolhaService` é a implementação real do que a interface `OcrEngine` sempre previu, só que a fonte primária é o **barcode/código impresso**, não OCR de texto livre.
+
+## Fluxo de execução — módulo de Importação por código (opção 11)
+
+```
+main.py → Menu → "11 - Importar escrituras por codigo" → modules/escritura_import_codigo_module.py
+                                                             │
+   1. Garante pypdfium2/zxing-cpp/pillow (+ oferece o OCR rapidocr).
+   2. Descobre 'livroNNNN' na faixa; livro concluido
+      (progress/escritura_importacao_codigo.json) e pulado.
+   3. Para cada livro:
+        ├─ EscrituraScannerService.scan_livro() (mesmo da opcao 9).
+        ├─ EscrituraCodigoPlannerService.planejar() - LOGICA PURA, recebe
+        │   duas funcoes injetadas (ler_codigos = CodigoFolhaService.
+        │   identificar_paginas; nome_destino = template):
+        │     - le o codigo de CADA pagina de cada arquivo de folha
+        │     - posiciona a pagina na folha REAL do codigo (nao na ordem)
+        │     - pagina sem codigo -> anexo da folha corrente
+        │     - codigo de outro livro -> plano.conflitos
+        │     - diagnostico: ok / quase / revisar / manual / incompleto / vazio
+        ├─ (simulacao) mostra o plano, nao grava
+        └─ EscrituraImporterService.executar() (reaproveitado da opcao 9):
+           separa as paginas e copia os anexos. Originais NUNCA tocados.
+   4. EscrituraImportRepository: Importacao_livro<N>.csv + Importacao_resumo
+      + Importacao_pendencias_<ts>.csv (folha faltando/duplicada/conflito).
+```
+
+Diferença para a opção 9: lá a folha vem da **posição** do arquivo na sequência; aqui vem do **código lido**. Uma folha extra no meio do livro não desloca as seguintes. Custo: renderiza e lê cada página pela rede — bem mais lento, feito para rodar em lotes. `EscrituraCodigoPlannerService` segue a mesma regra da opção 9: puro, sem I/O, testável com livros pequenos via `EscrituraFolhasPorLivro`.
+
+## Fluxo de execução — módulo de Relatório para o escrevente (opção 12)
+
+```
+main.py → Menu → "12 - Relatorio de escrituras" → modules/escritura_relatorio_module.py
+                                                      │
+   1. Pergunta a pasta base da saida (EscrituraDestino).
+   2. EscrituraRelatorioService.gerar(base, reports_dir) - NAO abre PDF:
+        ├─ percorre <base>/<diagnostico>/<livro>/NNN/ e conta o que existe
+        ├─ le os reports/Importacao_livro*.csv (rastreabilidade da importacao)
+        ├─ recalcula o diagnostico REAL a partir do disco (pode divergir do
+        │   que a importacao gravou) e cruza folhas faltando / duplicadas /
+        │   anexos / conflitos
+        └─ devolve um RelatorioEscrituras (LivroRelatorio por livro)
+   3. EscrituraRelatorioRepository.salvar():
+        - com openpyxl -> 1 .xlsx, 6 abas (Resumo, Folhas Faltando,
+          Duplicadas, Conflitos, Anexos por Folha, Rastreabilidade)
+        - sem openpyxl -> os mesmos dados em .csv (um por aba, numa subpasta)
+```
+
+Só consolida o que já está em disco — pode rodar quantas vezes quiser, é barato, não altera nada. É a "visão de conferência" para o escrevente decidir o que revisar à mão.
+
+## Fluxo de execução — módulo de Conflitos e validação (opção 13)
+
+```
+main.py → Menu → "13 - Tratar conflitos e validar" → modules/escritura_conflito_module.py
+                                                         │
+   A. Conflitos (EscrituraConflitoService.analisar/executar):
+        ├─ le os conflitos registrados pela importacao (pagina com codigo
+        │   de outro livro, mal arquivada no servidor)
+        ├─ para cada um, decide a acao:
+        │     folha FALTA no livro certo  -> "copiar" (encaixe limpo)
+        │     folha ja existe / ambiguo   -> "pular" (so lista)
+        ├─ nas de encaixe limpo (com confirmacao): copia a pagina de origem
+        │   para a pasta certa, RE-DIAGNOSTICA o livro e move revisar/->ok/
+        │   se fechou; marca a linha como "Resolvido"
+        └─ EscrituraConflitoRepository -> Conflitos_<ts>.csv
+   B. Validacao (EscrituraConflitoService.validar):
+        ├─ cruza reports/Importacao_livro*.csv com o disco:
+        │     folha "Gerada" que sumiu | arquivo orfao na pasta
+        │     (opcional, lento) arquivo de origem sumido da rede
+        └─ EscrituraConflitoRepository -> Validacao_<ts>.csv
+```
+
+Nada é apagado; a parte destrutiva (mover pasta de `revisar/` para `ok/`) só acontece após a cópia bem-sucedida e a re-checagem do diagnóstico. `EscrituraConflitoService` reusa `CodigoFolhaService`, `EscrituraRelatorioService` (para re-diagnosticar) e `PdfSplitterService`.
 
 ## Ideias reaproveitadas do CopiarPDFs.ps1
 
