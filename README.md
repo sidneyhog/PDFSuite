@@ -1,6 +1,6 @@
 # PDFSuite
 
-Suíte de gerenciamento de acervos de PDF (inventário, cópia, renomeação, separação, união, auditoria, relatórios e, no futuro, OCR), construída em Python seguindo Clean Architecture/SOLID para crescer por módulos sem reescrever o que já existe.
+Suíte de gerenciamento de acervos de PDF (inventário, cópia, renomeação, separação, união, auditoria, relatórios e OCR), construída em Python seguindo Clean Architecture/SOLID para crescer por módulos sem reescrever o que já existe.
 
 O `CopiarPDFs.ps1` (PowerShell) continua existindo, intocado, como ferramenta legada em seu próprio repositório — o PDFSuite o invoca como uma ponte na opção **2 - Copiar PDFs** do menu, em vez de reescrever a lógica de cópia agora.
 
@@ -20,7 +20,7 @@ O `CopiarPDFs.ps1` (PowerShell) continua existindo, intocado, como ferramenta le
 | 8 | Configurações | ✅ Exibição somente-leitura |
 | 9 | Preparar livros de escrituras para importação | ✅ Completo e funcional |
 | 10 | Conferir folhas pelo código do rodapé | ✅ Completo e funcional |
-| — | OCR | 🔜 Apenas interface preparada (`services/ocr_engine.py`) |
+| — | OCR | ✅ Em uso como etapa final da leitura do código do rodapé (fallback RapidOCR nos módulos 10 e 11, quando a camada de texto e o barcode falham). A interface genérica `OcrEngine` (`services/ocr_engine.py`), para OCR de texto livre em módulos futuros, segue reservada. |
 
 ## Requisitos
 

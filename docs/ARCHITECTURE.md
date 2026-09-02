@@ -2,7 +2,7 @@
 
 ## Contexto
 
-O `CopiarPDFs.ps1` (repositório `sidneyhog/cartorio-migracao-pdfs`) resolveu um problema pontual — copiar PDFs `1_*.pdf` de uma rede para uma pasta local — e está validado em produção. O problema real por trás é maior: **gerenciar um acervo de dezenas/centenas de milhares de PDFs** (inventariar, renomear, separar páginas, unir, auditar, extrair estatísticas e, no futuro, OCR).
+O `CopiarPDFs.ps1` (repositório `sidneyhog/cartorio-migracao-pdfs`) resolveu um problema pontual — copiar PDFs `1_*.pdf` de uma rede para uma pasta local — e está validado em produção. O problema real por trás é maior: **gerenciar um acervo de dezenas/centenas de milhares de PDFs** (inventariar, renomear, separar páginas, unir, auditar, extrair estatísticas e ler o código impresso no rodapé das folhas — inclusive por OCR, quando o barcode não decodifica).
 
 Decisão: o PowerShell **não é alterado** e continua existindo como ferramenta legada, independente, em seu próprio repositório. O **PDFSuite** nasce como um novo projeto em Python, pensado para crescer por anos sem precisar reescrever o que já existe.
 
@@ -36,7 +36,7 @@ models/        dataclasses + enums puros. Zero dependências de outras camadas.
 | **Strategy** | `repositories/report_writer.py` (`ReportWriter` Protocol, `CsvReportWriter`/`JsonReportWriter`) | Trocar/adicionar formato de saída sem tocar no `InventoryService`. |
 | **Strategy (templates)** | `services/rename_template_service.py` | Templates de nome (`{Livro}_{Pagina}`, `{NomeOriginal}_p{Pagina}` etc.) usam `str.format()` do próprio Python — nenhum parser customizado. Trocar/adicionar um placeholder é mudar o dicionário de valores, não reescrever um motor de template. **Compartilhado** pelos módulos de Renomeação e de Separação (este último usa `{Pagina}`/`{TotalPaginas}` como número físico da página). |
 | **Factory / Registry** | `modules/menu.py` (`MenuOption` + lista) | Cada opção do menu é registrada como `(número, rótulo, callable)` em `main.py`. Adicionar um módulo novo é uma linha, sem tocar no loop do menu (Open/Closed). |
-| **Protocol + stub** | `services/ocr_engine.py` (`OcrEngine` Protocol + `UnavailableOcrEngine`) | Satisfaz o requisito "não implementar OCR agora, só preparar a arquitetura". Qualquer módulo futuro programa contra a interface, não contra uma biblioteca específica. |
+| **Protocol + stub** | `services/ocr_engine.py` (`OcrEngine` Protocol + `UnavailableOcrEngine`) | Contrato para um motor de **OCR de texto livre** (extrair todo o texto de um PDF), para módulos futuros. Ainda é um stub — o OCR já em produção, restrito aos dígitos do rodapé, vive em `CodigoFolhaService` (RapidOCR). Qualquer módulo futuro programa contra a interface, não contra uma biblioteca específica. |
 | **Dependency Injection manual** | `main.py` | Sem framework de DI/ORM — over-engineering para este porte (viola KISS). Construtores explícitos bastam e mantêm o código rastreável. |
 
 ## Modelo de dados
@@ -255,7 +255,7 @@ Um app CLI deste porte não justifica um framework de injeção de dependência 
 5. União de PDFs.
 6. Auditoria — estende o Inventário com "sem texto" e "muito grande" (corrompido/protegido/vazio/duplicado já são cobertos pelo Inventário).
 7. Relatórios/estatísticas avançadas.
-8. OCR — interface (`OcrEngine`) já preparada; implementação real fica para quando houver necessidade real.
+8. OCR de texto livre — interface (`OcrEngine`) já preparada; a implementação genérica fica para quando houver necessidade real. O OCR aplicado ao código do rodapé já está em produção (módulos 10 e 11, `CodigoFolhaService`).
 9. ✅ Preparação de livros de escrituras para importação — módulo especializado no acervo `2_Livros` do cartório. Scanner + planejador puro + importador; diagnóstico por livro; faixa de livros; retomável; modo simulação. Reaproveita `PdfSplitterService`, `PdfInspectorService`, `NamingService`, `RenameTemplateService`.
 10. ✅ Conferência de folhas pelo código do rodapé — lê o código impresso (`SP0869` + livro + folha) de cada página (texto do PDF → barcode Code 39 → OCR do rodapé), corrige a numeração das pastas no lugar, separa anexos escaneados dentro de arquivos de folha, trata duplicatas e re-diagnostica. Trava anti-regressão: livro que a importação fechou como `ok` nunca é rebaixado. É a implementação real da ideia por trás de `OcrEngine`.
 11. ✅ Importação de escrituras **por código** — faz cópia + separação + conferência num passo só. Para cada página de cada arquivo de folha, `CodigoFolhaService.identificar_paginas()` lê o código do rodapé e o `EscrituraCodigoPlannerService` (puro) posiciona a página na folha real; página sem código vira anexo da folha corrente; código de outro livro é conflito. Elimina o "drift" posicional dos livros de 2013 e dispensa a etapa 10. Reaproveita scanner, `PdfSplitterService`, `NamingService`, `EscrituraImporterService` e o `EscrituraImportRepository` (progress próprio). Gera também `Importacao_pendencias_<ts>.csv` (folha faltando / duplicada / conflito, 1 por linha).
