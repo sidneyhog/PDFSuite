@@ -94,6 +94,37 @@ def test_executar_pula_folha_que_ja_existe(tmp_path: Path) -> None:
     assert "ja existe" in itens[0].motivo
 
 
+def test_conflito_csv_formato_antigo_sem_coluna_folha(tmp_path: Path) -> None:
+    """CSV da 1a versao da opcao 11: FolhaDestino do conflito vinha vazia,
+    a folha so aparece no texto do Erro. Precisa ser lida de la."""
+    base, reports, origem = _arvore(tmp_path)
+    with open(reports / "Importacao_livro1114_20260101_000000.csv", "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.writer(f, delimiter=";")
+        w.writerow(["Livro", "FolhaDestino", "Tipo", "PastaDestino", "NomeDestino",
+                    "Origem", "PaginaOrigem", "Status", "Erro"])
+        w.writerow([1114, "", "conflito", "", "", str(origem), 1, "Fora do plano",
+                    "codigo do livro 1113 folha 3"])
+    itens = _svc().analisar(base, reports)
+    assert len(itens) == 1
+    assert itens[0].livro_correto == 1113 and itens[0].folha == 3
+    assert itens[0].acao == "copiar"
+
+
+def test_validar_nao_reclama_de_anexo_por_pagina(tmp_path: Path) -> None:
+    """Os anexos '<origem>_pNN.pdf' que a opcao 11 gera estao no CSV como
+    linhas 'anexo' - nao podem virar 'sem_registro_csv'."""
+    base, reports, origem = _arvore(tmp_path)
+    _pdf(base / "quase" / "1113" / "002" / "livro1113_folha_002_003_p03.pdf")
+    with open(reports / "Importacao_livro1113_20260101_000000.csv", "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.writer(f, delimiter=";")
+        w.writerow(["Livro", "FolhaDestino", "Tipo", "PastaDestino", "NomeDestino",
+                    "Origem", "PaginaOrigem", "Status", "Erro", "CaminhoDestino"])
+        w.writerow([1113, 2, "conteudo", "002", "1113_folha_002.pdf", "N:\\a.pdf", 1, "Gerada", "", ""])
+        w.writerow([1113, 2, "anexo", "002", "livro1113_folha_002_003_p03.pdf", "N:\\b.pdf", 3, "Copiado", "", ""])
+    divs = _svc().validar(base, reports)
+    assert not [d for d in divs if "_p03.pdf" in d.detalhe]
+
+
 def test_validar_detecta_folha_no_csv_ausente_no_disco(tmp_path: Path) -> None:
     base, reports, origem = _arvore(tmp_path)
     with open(reports / "Importacao_livro1113_20260101_000000.csv", "w", newline="", encoding="utf-8-sig") as f:

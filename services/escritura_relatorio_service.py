@@ -17,7 +17,14 @@ logger = logging.getLogger("pdfsuite")
 
 _DIAGS = ("ok", "quase", "revisar", "manual", "incompleto", "vazio")
 _RE_NUM = re.compile(r"^\d+$")
-_RE_ANEXO = re.compile(r"^(anexo_|pasta_|L\.|\d{1,2}_)", re.IGNORECASE)
+# anexo pre-existente: prefixo 2_..13_, pasta_, L.####, anexo_NN
+_RE_ANEXO_PREFIXO = re.compile(r"^(anexo_|pasta_|L\.|\d{1,2}_)", re.IGNORECASE)
+# anexo de 1 pagina que a opcao 11 gera: "<origem>_p05.pdf"
+_RE_ANEXO_SUFIXO = re.compile(r"_p\d{1,3}\.pdf$", re.IGNORECASE)
+
+
+def _eh_anexo(nome: str) -> bool:
+    return bool(_RE_ANEXO_PREFIXO.match(nome)) or bool(_RE_ANEXO_SUFIXO.search(nome))
 
 
 class EscrituraRelatorioService:
@@ -103,8 +110,8 @@ class EscrituraRelatorioService:
                 continue
             n = int(sub.name)
             pdfs = list(sub.glob("*.pdf"))
-            folha_files = [p for p in pdfs if not _RE_ANEXO.match(p.name)]
-            anexo_files = [p for p in pdfs if _RE_ANEXO.match(p.name)]
+            folha_files = [p for p in pdfs if not _eh_anexo(p.name)]
+            anexo_files = [p for p in pdfs if _eh_anexo(p.name)]
             if folha_files:
                 lr.folhas_presentes.append(n)
                 if len(folha_files) > 1:
@@ -154,8 +161,13 @@ class EscrituraRelatorioService:
                 if (lin.get("Status") or "").strip().lower().startswith("resolv"):
                     continue                       # ja tratado pela opcao 13
                 det = lin.get("Erro") or ""
-                m = re.search(r"livro (\d+)", det)
-                lr.conflitos.append((folha, m.group(1) if m else "", origem, (lin.get("PaginaOrigem") or "").strip()))
+                # "codigo do livro 1113 folha 119" - nos CSV antigos a coluna
+                # FolhaDestino do conflito vinha vazia, entao tira do texto tambem
+                m_livro = re.search(r"livro\s+(\d+)", det)
+                m_folha = re.search(r"folha\s+(\d+)", det)
+                livro_cod = m_livro.group(1) if m_livro else ""
+                folha_cod = folha or (m_folha.group(1) if m_folha else "")
+                lr.conflitos.append((folha_cod, livro_cod, origem, (lin.get("PaginaOrigem") or "").strip()))
             elif tipo in ("conteudo", "abertura", "encerramento") and folha.isdigit():
                 lr.origem_por_folha.setdefault(int(folha), origem)
             if (lin.get("Status") or "").strip().lower() == "erro":

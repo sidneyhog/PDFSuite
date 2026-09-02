@@ -18,7 +18,7 @@ from typing import Optional
 
 from models.escritura_relatorio import RelatorioEscrituras
 from services.codigo_folha_service import CodigoFolhaService
-from services.escritura_relatorio_service import _RE_ANEXO, EscrituraRelatorioService
+from services.escritura_relatorio_service import EscrituraRelatorioService
 from services.pdf_splitter_service import PdfSplitterService
 
 logger = logging.getLogger("pdfsuite")
@@ -170,29 +170,31 @@ class EscrituraConflitoService:
                 linhas = list(csv.DictReader(csv_path.read_text(encoding="utf-8-sig").splitlines(), delimiter=";"))
             except OSError:
                 continue
+            origens_checadas: set[str] = set()
             for lin in linhas:
                 tipo = (lin.get("Tipo") or "").strip()
                 folha = (lin.get("FolhaDestino") or "").strip()
                 nome = (lin.get("NomeDestino") or "").strip()
                 origem = (lin.get("Origem") or "").strip()
                 status = (lin.get("Status") or "").strip().lower()
+                if nome:                              # qualquer linha (folha OU anexo)
+                    registrados.add(nome)
                 if tipo in ("conteudo", "abertura", "encerramento") and folha.isdigit() and status == "gerada":
-                    registrados.add(nome or f"{lv.numero}_folha_{int(folha):03d}.pdf")
                     caminho = lin.get("CaminhoDestino") or ""
                     alvo = Path(caminho) if caminho else pasta_por_livro[lv.numero] / f"{int(folha):03d}" / nome
                     if not alvo.exists():
                         divs.append(Divergencia(lv.numero, folha, "faltando_no_disco",
                                                 f"CSV diz gerada, arquivo ausente: {alvo}"))
-                if checar_origem and origem and not Path(origem).exists():
-                    divs.append(Divergencia(lv.numero, folha or "-", "origem_sumiu",
-                                            f"origem nao esta mais na rede: {origem}"))
-            # arquivos de folha no disco sem linha no CSV
+                if checar_origem and origem and origem not in origens_checadas:
+                    origens_checadas.add(origem)
+                    if not Path(origem).exists():
+                        divs.append(Divergencia(lv.numero, folha or "-", "origem_sumiu",
+                                                f"origem nao esta mais na rede: {origem}"))
+            # arquivos no disco sem NENHUMA linha no CSV (nome nao registrado)
             for sub in pasta_por_livro[lv.numero].iterdir():
                 if not (sub.is_dir() and sub.name.isdigit()):
                     continue
                 for pdf in sub.glob("*.pdf"):
-                    if _RE_ANEXO.match(pdf.name):
-                        continue
                     if pdf.name not in registrados:
                         divs.append(Divergencia(lv.numero, sub.name, "sem_registro_csv",
                                                 f"arquivo no disco sem linha no CSV: {pdf}"))
