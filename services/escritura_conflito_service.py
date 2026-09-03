@@ -160,7 +160,7 @@ class EscrituraConflitoService:
                 resolvidos.append(it)
 
         if reports_dir is not None:
-            self._marcar_resolvidos_no_csv(resolvidos, reports_dir)
+            self._reconciliar_csv_origem(itens, reports_dir)
             self._registrar_no_destino(resolvidos, reports_dir)
 
         for livro in sorted(afetados):
@@ -243,30 +243,44 @@ class EscrituraConflitoService:
                                                 f"arquivo no disco sem linha no CSV: {pdf}"))
         return divs
 
-    def _marcar_resolvidos_no_csv(self, resolvidos: list[ConflitoItem], reports_dir: Path) -> None:
-        """Marca a linha 'conflito' como resolvida no CSV de rastreabilidade do
-        livro em cuja pasta a pagina estava (para nao contar mais como pendencia).
+    @staticmethod
+    def _base_erro(texto: str) -> str:
+        return re.sub(r"\s*->\s*(movido|roteado) para .*$", "", texto or "").strip()
+
+    def _reconciliar_csv_origem(self, itens: list[ConflitoItem], reports_dir: Path) -> None:
+        """No CSV do livro em cuja pasta a pagina estava, marca a linha de
+        conflito: 'Resolvido' quando foi roteada, ou reabre ('Fora do plano')
+        quando ficou ambigua (folha ja existe / livro nao processado) - assim
+        os casos que precisam de decisao humana voltam a aparecer no relatorio.
         """
         por_livro: dict[int, list[ConflitoItem]] = {}
-        for it in resolvidos:
+        for it in itens:
             por_livro.setdefault(it.livro_pasta_errada, []).append(it)
         for livro, its in por_livro.items():
             csv_path = self._relatorio._ultimo_csv(reports_dir, f"Importacao_livro{livro}_*.csv")
             if csv_path is None:
                 continue
-            origens = {str(it.origem) for it in its}
-            destinos = {str(it.origem): str(it.destino) for it in its}
             try:
                 linhas = list(csv.DictReader(csv_path.read_text(encoding="utf-8-sig").splitlines(), delimiter=";"))
                 campos = list(linhas[0].keys()) if linhas else []
             except OSError:
                 continue
+            por_origem = {str(it.origem): it for it in its}
             mudou = False
             for lin in linhas:
-                if (lin.get("Tipo") or "").strip() == "conflito" and (lin.get("Origem") or "").strip() in origens:
+                if (lin.get("Tipo") or "").strip() != "conflito":
+                    continue
+                it = por_origem.get((lin.get("Origem") or "").strip())
+                if it is None:
+                    continue
+                base = self._base_erro(lin.get("Erro", ""))
+                if it.status in ("OK", "PULADO") and it.destino is not None:
                     lin["Status"] = "Resolvido"
-                    lin["Erro"] = f"{lin.get('Erro', '')} -> movido para {destinos.get(lin['Origem'], '')}"
-                    mudou = True
+                    lin["Erro"] = f"{base} -> roteado para {it.destino}"
+                else:                                  # ambiguo: reabre para conferencia
+                    lin["Status"] = "Fora do plano"
+                    lin["Erro"] = f"{base} - {it.motivo}"
+                mudou = True
             if mudou and campos:
                 with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
                     w = csv.DictWriter(f, fieldnames=campos, delimiter=";")

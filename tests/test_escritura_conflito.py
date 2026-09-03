@@ -110,6 +110,18 @@ def test_reprocessar_conflito_ja_resolvido(tmp_path: Path) -> None:
     assert len(de_novo) == 1 and de_novo[0].livro_correto == 1113
 
 
+def test_conflito_ambiguo_reabre_no_csv(tmp_path: Path) -> None:
+    """Conflito cuja folha ja existe no livro certo: ao (re)processar, a
+    linha no CSV volta a 'Fora do plano' para aparecer no relatorio."""
+    base, reports, origem = _arvore(tmp_path)
+    _pdf(base / "quase" / "1113" / "003" / "1113_folha_003.pdf")   # folha 3 ja existe
+    svc = _svc()
+    svc.executar(svc.analisar(base, reports), base, reports)
+    txt = next(reports.glob("Importacao_livro1114_*.csv")).read_text(encoding="utf-8-sig")
+    linha = [x for x in txt.splitlines() if "conflito" in x][0]
+    assert "Fora do plano" in linha and "ja existe" in linha
+
+
 def test_folha_roteada_entra_no_csv_do_livro_certo(tmp_path: Path) -> None:
     base, reports, origem = _arvore(tmp_path)
     svc = _svc()
