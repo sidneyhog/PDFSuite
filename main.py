@@ -115,6 +115,13 @@ def main() -> int:
         ConferenciaRepository(config.reports_dir),
     )
 
+    escritura_conflito_service = EscrituraConflitoService(
+        leitor_codigo,
+        EscrituraRelatorioService(config.escritura_folhas_por_livro),
+        PdfSplitterService(),
+        config.escritura_folhas_por_livro,
+    )
+
     escritura_codigo_module = EscrituraImportCodigoModule(
         config,
         EscrituraScannerService(),
@@ -125,6 +132,7 @@ def main() -> int:
         ),
         rename_template_service,
         EscrituraImporterService(),
+        escritura_conflito_service,
     )
 
     escritura_relatorio_module = EscrituraRelatorioModule(
@@ -136,12 +144,7 @@ def main() -> int:
     escritura_conflito_module = EscrituraConflitoModule(
         config,
         leitor_codigo,
-        EscrituraConflitoService(
-            leitor_codigo,
-            EscrituraRelatorioService(config.escritura_folhas_por_livro),
-            PdfSplitterService(),
-            config.escritura_folhas_por_livro,
-        ),
+        escritura_conflito_service,
         EscrituraConflitoRepository(config.reports_dir),
     )
 

@@ -85,12 +85,13 @@ def test_executar_copia_e_rediagnostica(tmp_path: Path) -> None:
     assert _svc().analisar(base, reports) == []
 
 
-def test_executar_pula_folha_que_ja_existe(tmp_path: Path) -> None:
+def test_folha_que_ja_existe_vai_para_duplicada(tmp_path: Path) -> None:
     base, reports, origem = _arvore(tmp_path)
     _pdf(base / "quase" / "1113" / "003" / "1113_folha_003.pdf")   # ja existe
     svc = _svc()
     itens = svc.analisar(base, reports)
-    assert itens[0].acao == "pular"
+    assert itens[0].acao == "copiar"
+    assert itens[0].destino.parent.name == "duplicada"
     assert "ja existe" in itens[0].motivo
 
 

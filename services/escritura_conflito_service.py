@@ -87,14 +87,19 @@ class EscrituraConflitoService:
             return ConflitoItem(livro_errado, 0, 0, Path(origem), situacao,
                                 motivo="codigo ilegivel")
         it = ConflitoItem(livro_errado, alvo, folha, Path(origem), situacao)
+        nome = f"{alvo}_folha_{folha:03d}.pdf"
         if alvo not in pasta_por_livro:
             it.motivo = f"livro {alvo} nao esta na saida"
-        elif folha in presentes.get(alvo, ()):
-            it.motivo = f"folha {folha} ja existe no {alvo} - conferir duplicidade"
         elif not it.origem.exists():
             it.motivo = f"origem nao encontrada: {it.origem}"
+        elif folha in presentes.get(alvo, ()):
+            # a folha ja existe no livro certo: guarda a copia extra em duplicada/
+            # para o escrevente comparar (o codigo diz que e essa folha, mas ja ha uma)
+            it.destino = pasta_por_livro[alvo] / f"{folha:03d}" / "duplicada" / nome
+            it.acao = "copiar"
+            it.motivo = f"folha {folha} ja existe no {alvo} - copia extra em duplicada/ (conferir)"
         else:
-            it.destino = pasta_por_livro[alvo] / f"{folha:03d}" / f"{alvo}_folha_{folha:03d}.pdf"
+            it.destino = pasta_por_livro[alvo] / f"{folha:03d}" / nome
             it.acao = "copiar"
             it.motivo = f"folha {folha} falta no {alvo}"
         return it
@@ -109,6 +114,11 @@ class EscrituraConflitoService:
         for it in itens:
             if it.acao != "copiar" or it.destino is None:
                 it.status = "PULADO"
+                continue
+            if it.destino.exists():
+                it.status = "PULADO"
+                it.motivo = "ja tratado antes (destino existe)"
+                resolvidos.append(it)          # ainda assim marca o conflito como resolvido
                 continue
             ok, msg = self._copiar(it)
             it.status = "OK" if ok else "ERRO"

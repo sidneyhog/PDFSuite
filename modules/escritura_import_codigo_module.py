@@ -40,6 +40,7 @@ class EscrituraImportCodigoModule:
         repository: EscrituraImportRepository,
         template_service: RenameTemplateService,
         importer: Optional[EscrituraImporterService] = None,
+        conflito_service=None,
     ) -> None:
         self._config = config
         self._scanner = scanner
@@ -47,6 +48,7 @@ class EscrituraImportCodigoModule:
         self._repository = repository
         self._template_service = template_service
         self._importer = importer or EscrituraImporterService()
+        self._conflito_service = conflito_service
 
     # ------------------------------------------------------------------ #
 
@@ -126,11 +128,39 @@ class EscrituraImportCodigoModule:
             self._repository.marcar_concluido(numero)
             self._mostrar_resultado(plano)
 
+        if not dry_run:
+            self._rotear_conflitos(destino)
+
         if planos:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             caminho = self._repository.salvar_resumo(planos, ts)
             pend = caminho.with_name(f"Importacao_pendencias_{ts}.csv")
             self._resumo_geral(planos, dry_run, caminho, pend if pend.exists() else None)
+
+    def _rotear_conflitos(self, destino: Path) -> None:
+        """Toda pagina cujo codigo e de outro livro vai para o livro certo,
+        na folha que o codigo indica - o codigo E a decisao, nao a pasta em
+        que ela foi digitalizada. So os casos ambiguos (folha ja existe /
+        livro nao processado) ficam para conferencia manual (opcao 13).
+        """
+        if self._conflito_service is None:
+            return
+        itens = self._conflito_service.analisar(destino, self._config.reports_dir)
+        limpos = [i for i in itens if i.acao == "copiar"]
+        if not itens:
+            return
+        print(f"\nRoteando conflitos: {len(limpos)} pagina(s) para o livro certo, "
+              f"{len(itens) - len(limpos)} ambigua(s) para a opcao 13.")
+        if not limpos:
+            return
+        res = self._conflito_service.executar(itens, destino, self._config.reports_dir)
+        for it in res.itens:
+            if it.status == "OK":
+                print(f"   folha {it.folha} -> livro {it.livro_correto}  ({it.motivo})")
+            elif it.status == "ERRO":
+                print(f"   ERRO folha {it.folha} livro {it.livro_correto}: {it.motivo}")
+        for livro, (antes, depois, movido) in sorted(res.livros_rediagnosticados.items()):
+            print(f"   livro {livro}: {antes} -> {depois}")
 
     # ---------------- libs ---------------- #
 
