@@ -126,10 +126,18 @@ class EscrituraConflitoService:
         elif not it.origem.exists():
             it.motivo = f"origem nao encontrada: {it.origem}"
         elif folha in presentes.get(alvo, ()):
-            # a folha JA existe no livro certo - caso ambiguo (pode ser aditamento,
-            # pagina duvidosa, mau OCR). NAO copia automatico para nao rebaixar um
-            # livro ja fechado; so lista para o escrevente olhar a pagina.
-            it.motivo = f"folha {folha} ja existe no {alvo} - o codigo diz que e essa folha; conferir a pagina"
+            ja = pasta_por_livro[alvo] / f"{folha:03d}" / nome
+            if (ja.exists() and it.origem.exists()
+                    and ja.stat().st_size == it.origem.stat().st_size):
+                # e a MESMA pagina, ja no lugar certo (roteada por uma versao
+                # anterior que nao gravava a linha) - so falta registrar no CSV
+                it.destino = ja
+                it.acao = "registrar"
+                it.motivo = f"folha {folha} ja roteada para o {alvo}; registrando no CSV"
+            else:
+                # folha diferente ja ocupa o lugar - ambiguo (aditamento, mau OCR).
+                # NAO copia automatico para nao rebaixar um livro fechado.
+                it.motivo = f"folha {folha} ja existe no {alvo} - o codigo diz que e essa folha; conferir a pagina"
         else:
             it.destino = pasta_por_livro[alvo] / f"{folha:03d}" / nome
             it.acao = "copiar"
@@ -144,6 +152,11 @@ class EscrituraConflitoService:
         afetados: set[int] = set()
         resolvidos: list[ConflitoItem] = []
         for it in itens:
+            if it.acao == "registrar" and it.destino is not None:
+                it.status = "PULADO"
+                it.motivo = "ja no lugar - registrado no CSV do livro certo"
+                resolvidos.append(it)
+                continue
             if it.acao != "copiar" or it.destino is None:
                 it.status = "PULADO"
                 continue

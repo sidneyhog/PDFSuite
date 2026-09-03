@@ -122,6 +122,40 @@ def test_conflito_ambiguo_reabre_no_csv(tmp_path: Path) -> None:
     assert "Fora do plano" in linha and "ja existe" in linha
 
 
+def test_registrar_folha_ja_no_lugar_por_versao_antiga(tmp_path: Path) -> None:
+    """Pagina roteada por uma versao anterior (arquivo no lugar, sem linha no
+    CSV): acao 'registrar' - adiciona a linha sem re-copiar."""
+    import shutil as _sh
+
+    base = tmp_path / "out"
+    for n in (1, 2, 4, 5, 6):
+        _pdf(base / "quase" / "1113" / f"{n:03d}" / f"1113_folha_{n:03d}.pdf")
+    for n in range(1, 7):
+        _pdf(base / "ok" / "1114" / f"{n:03d}" / f"1114_folha_{n:03d}.pdf")
+    origem = tmp_path / "N" / "livro1114" / "f003" / "1_livro1113_folha_003.pdf"
+    _pdf_real(origem, 1)
+    # ja roteada antes: arquivo no lugar, mas sem linha no CSV do 1113
+    alvo = base / "quase" / "1113" / "003" / "1113_folha_003.pdf"
+    alvo.parent.mkdir(parents=True)
+    _sh.copy(origem, alvo)
+
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    with open(reports / "Importacao_livro1114_20260101_000000.csv", "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.writer(f, delimiter=";")
+        w.writerow(["Livro", "FolhaDestino", "Tipo", "PastaDestino", "NomeDestino",
+                    "Origem", "PaginaOrigem", "Status", "Erro"])
+        w.writerow([1114, "", "conflito", "", "", str(origem), 1, "Fora do plano",
+                    "codigo do livro 1113 folha 3"])
+
+    svc = _svc()
+    itens = svc.analisar(base, reports)
+    assert len(itens) == 1 and itens[0].acao == "registrar"
+    svc.executar(itens, base, reports)
+    txt = next(reports.glob("Importacao_livro1113_*.csv")).read_text(encoding="utf-8-sig")
+    assert "Roteado (opcao 13)" in txt and "1113_folha_003.pdf" in txt
+
+
 def test_folha_roteada_entra_no_csv_do_livro_certo(tmp_path: Path) -> None:
     base, reports, origem = _arvore(tmp_path)
     svc = _svc()

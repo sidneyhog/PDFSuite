@@ -61,20 +61,26 @@ class EscrituraConflitoModule:
             return
 
         copiar = [i for i in itens if i.acao == "copiar"]
-        pular = [i for i in itens if i.acao != "copiar"]
-        print(f"\n  {len(itens)} conflito(s): {len(copiar)} com encaixe limpo, {len(pular)} para conferir a mao.")
+        registrar = [i for i in itens if i.acao == "registrar"]
+        pular = [i for i in itens if i.acao not in ("copiar", "registrar")]
+        print(f"\n  {len(itens)} conflito(s): {len(copiar)} para copiar, {len(registrar)} so registrar, "
+              f"{len(pular)} para conferir a mao.")
         for it in itens:
-            marca = "COPIAR" if it.acao == "copiar" else "pular "
+            marca = {"copiar": "COPIAR", "registrar": "REGIST"}.get(it.acao, "pular ")
             print(f"   [{marca}] livro {it.livro_correto} folha {it.folha}  ({it.motivo})")
-            if it.destino:
+            if it.destino and it.acao == "copiar":
                 print(f"            {it.origem}\n         -> {it.destino}")
 
-        if not copiar:
-            print("\n  nada a copiar automaticamente. Veja o relatorio (opcao 12) para os demais.\n")
+        if not copiar and not registrar:
+            print("\n  nada a aplicar automaticamente. Veja o relatorio (opcao 12) para os demais.\n")
             self._salvar_conflitos(itens)
             return
 
-        if self._sn(f"\nCopiar as {len(copiar)} paginas de encaixe limpo agora? [S]/[N]: ", padrao=False):
+        aplicar = bool(registrar) and not copiar
+        if not aplicar:
+            aplicar = self._sn(f"\nAplicar ({len(copiar)} copia(s), {len(registrar)} registro(s)) agora? [S]/[N]: ",
+                               padrao=False)
+        if aplicar:
             self._garantir_libs_se_preciso(copiar)
             res = self._service.executar(itens, base, reports)
             for it in res.itens:
