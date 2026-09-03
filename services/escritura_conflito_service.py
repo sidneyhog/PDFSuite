@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import re
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -66,18 +67,50 @@ class EscrituraConflitoService:
 
     # ------------------------------------------------------------------ #
 
-    def analisar(self, base_dir: Path, reports_dir: Path) -> list[ConflitoItem]:
+    def analisar(self, base_dir: Path, reports_dir: Path,
+                 incluir_resolvidos: bool = False) -> list[ConflitoItem]:
         rel = self._relatorio.gerar(base_dir, reports_dir)
         pasta_por_livro = {lv.numero: lv.pasta for lv in rel.livros}
         presentes = {lv.numero: set(lv.folhas_presentes) for lv in rel.livros}
         itens: list[ConflitoItem] = []
         for lv in rel.livros:
-            for folha_lida, livro_cod, origem, _pagina, situacao, _acao in lv.conflitos:
+            conflitos = list(lv.conflitos)
+            if incluir_resolvidos:
+                vistos = {c[2] for c in conflitos}
+                for extra in self._conflitos_resolvidos(reports_dir, lv.numero):
+                    if extra[2] not in vistos:
+                        conflitos.append(extra)
+            for folha_lida, livro_cod, origem, *_ in conflitos:
                 itens.append(self._montar(
-                    lv.numero, folha_lida, livro_cod, origem, situacao,
+                    lv.numero, folha_lida, livro_cod, origem, "",
                     pasta_por_livro, presentes,
                 ))
         return itens
+
+    def _conflitos_resolvidos(self, reports_dir: Path, livro: int):
+        """Le do CSV as linhas de conflito ja marcadas 'Resolvido' (para
+        re-corrigir um roteamento anterior)."""
+        csv_path = self._relatorio._ultimo_csv(reports_dir, f"Importacao_livro{livro}_*.csv")
+        if csv_path is None:
+            return []
+        try:
+            linhas = list(csv.DictReader(csv_path.read_text(encoding="utf-8-sig").splitlines(), delimiter=";"))
+        except OSError:
+            return []
+        out = []
+        for lin in linhas:
+            if (lin.get("Tipo") or "").strip() != "conflito":
+                continue
+            if not (lin.get("Status") or "").strip().lower().startswith("resolv"):
+                continue
+            det = lin.get("Erro") or ""
+            ml = re.search(r"livro\s+(\d+)", det)
+            mf = re.search(r"folha\s+(\d+)", det)
+            out.append(((lin.get("FolhaDestino") or "").strip() or (mf.group(1) if mf else ""),
+                        ml.group(1) if ml else "",
+                        (lin.get("Origem") or "").strip(),
+                        (lin.get("PaginaOrigem") or "").strip()))
+        return out
 
     def _montar(self, livro_errado, folha_lida, livro_cod, origem, situacao,
                 pasta_por_livro, presentes) -> ConflitoItem:

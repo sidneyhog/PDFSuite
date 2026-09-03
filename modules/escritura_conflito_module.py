@@ -50,8 +50,12 @@ class EscrituraConflitoModule:
     # ---------------- conflitos ---------------- #
 
     def _tratar_conflitos(self, base: Path, reports: Path) -> None:
-        print("\nProcurando conflitos (paginas com codigo de outro livro)...")
-        itens = self._service.analisar(base, reports)
+        reproc = self._sn(
+            "\nReprocessar tambem os conflitos ja marcados 'Resolvido' (re-corrigir)? [S]/[N]: ",
+            padrao=False,
+        )
+        print("Procurando conflitos (paginas com codigo de outro livro)...")
+        itens = self._service.analisar(base, reports, incluir_resolvidos=reproc)
         if not itens:
             print("  nenhum conflito registrado.\n")
             return

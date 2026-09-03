@@ -98,6 +98,18 @@ def test_folha_que_ja_existe_nao_e_copiada_automaticamente(tmp_path: Path) -> No
     assert not res.livros_rediagnosticados
 
 
+def test_reprocessar_conflito_ja_resolvido(tmp_path: Path) -> None:
+    """Depois de resolver, 'incluir_resolvidos=True' re-le o conflito - para
+    re-corrigir um roteamento anterior (ex: registrar a folha no CSV certo)."""
+    base, reports, origem = _arvore(tmp_path)
+    svc = _svc()
+    svc.executar(svc.analisar(base, reports), base, reports)          # 1a vez: resolve
+    assert svc.analisar(base, reports) == []                          # nao aparece mais
+    # com a flag, volta a aparecer (agora como 'pular', destino ja existe)
+    de_novo = svc.analisar(base, reports, incluir_resolvidos=True)
+    assert len(de_novo) == 1 and de_novo[0].livro_correto == 1113
+
+
 def test_folha_roteada_entra_no_csv_do_livro_certo(tmp_path: Path) -> None:
     base, reports, origem = _arvore(tmp_path)
     svc = _svc()
