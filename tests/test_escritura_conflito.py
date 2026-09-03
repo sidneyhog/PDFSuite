@@ -85,14 +85,31 @@ def test_executar_copia_e_rediagnostica(tmp_path: Path) -> None:
     assert _svc().analisar(base, reports) == []
 
 
-def test_folha_que_ja_existe_vai_para_duplicada(tmp_path: Path) -> None:
+def test_folha_que_ja_existe_nao_e_copiada_automaticamente(tmp_path: Path) -> None:
     base, reports, origem = _arvore(tmp_path)
     _pdf(base / "quase" / "1113" / "003" / "1113_folha_003.pdf")   # ja existe
     svc = _svc()
     itens = svc.analisar(base, reports)
-    assert itens[0].acao == "copiar"
-    assert itens[0].destino.parent.name == "duplicada"
+    assert itens[0].acao == "pular"
     assert "ja existe" in itens[0].motivo
+    # nao rebaixa o 1113 nem copia nada
+    res = svc.executar(itens, base, reports)
+    assert res.itens[0].status == "PULADO"
+    assert not res.livros_rediagnosticados
+
+
+def test_folha_roteada_entra_no_csv_do_livro_certo(tmp_path: Path) -> None:
+    base, reports, origem = _arvore(tmp_path)
+    svc = _svc()
+    svc.executar(svc.analisar(base, reports), base, reports)
+    txt = next(reports.glob("Importacao_livro1113_*.csv")).read_text(encoding="utf-8-sig")
+    assert "Roteado (opcao 13)" in txt
+    assert "1_livro1113_folha_003.pdf" in txt
+    # rodar de novo nao duplica a linha
+    svc2 = _svc()
+    svc2.executar(svc2.analisar(base, reports), base, reports)
+    txt2 = next(reports.glob("Importacao_livro1113_*.csv")).read_text(encoding="utf-8-sig")
+    assert txt2.count("Roteado (opcao 13)") == 1
 
 
 def test_conflito_csv_formato_antigo_sem_coluna_folha(tmp_path: Path) -> None:

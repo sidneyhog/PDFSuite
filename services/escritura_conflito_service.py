@@ -93,11 +93,10 @@ class EscrituraConflitoService:
         elif not it.origem.exists():
             it.motivo = f"origem nao encontrada: {it.origem}"
         elif folha in presentes.get(alvo, ()):
-            # a folha ja existe no livro certo: guarda a copia extra em duplicada/
-            # para o escrevente comparar (o codigo diz que e essa folha, mas ja ha uma)
-            it.destino = pasta_por_livro[alvo] / f"{folha:03d}" / "duplicada" / nome
-            it.acao = "copiar"
-            it.motivo = f"folha {folha} ja existe no {alvo} - copia extra em duplicada/ (conferir)"
+            # a folha JA existe no livro certo - caso ambiguo (pode ser aditamento,
+            # pagina duvidosa, mau OCR). NAO copia automatico para nao rebaixar um
+            # livro ja fechado; so lista para o escrevente olhar a pagina.
+            it.motivo = f"folha {folha} ja existe no {alvo} - o codigo diz que e essa folha; conferir a pagina"
         else:
             it.destino = pasta_por_livro[alvo] / f"{folha:03d}" / nome
             it.acao = "copiar"
@@ -129,6 +128,7 @@ class EscrituraConflitoService:
 
         if reports_dir is not None:
             self._marcar_resolvidos_no_csv(resolvidos, reports_dir)
+            self._registrar_no_destino(resolvidos, reports_dir)
 
         for livro in sorted(afetados):
             mudou = self._rediagnosticar(livro, base_dir, reports_dir or base_dir)
@@ -235,6 +235,51 @@ class EscrituraConflitoService:
                     lin["Erro"] = f"{lin.get('Erro', '')} -> movido para {destinos.get(lin['Origem'], '')}"
                     mudou = True
             if mudou and campos:
+                with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
+                    w = csv.DictWriter(f, fieldnames=campos, delimiter=";")
+                    w.writeheader()
+                    w.writerows(linhas)
+
+    _COLUNAS = ["Livro", "FolhaDestino", "Tipo", "PastaDestino", "NomeDestino",
+               "Origem", "PaginaOrigem", "Status", "Erro", "CaminhoDestino"]
+
+    def _registrar_no_destino(self, resolvidos: list[ConflitoItem], reports_dir: Path) -> None:
+        """Adiciona a folha roteada no CSV de rastreabilidade do livro CERTO,
+        para o historico ficar completo e a validacao nao acusar orfao.
+        """
+        por_livro: dict[int, list[ConflitoItem]] = {}
+        for it in resolvidos:
+            if it.status in ("OK", "PULADO") and it.destino is not None:
+                por_livro.setdefault(it.livro_correto, []).append(it)
+        for livro, its in por_livro.items():
+            csv_path = self._relatorio._ultimo_csv(reports_dir, f"Importacao_livro{livro}_*.csv")
+            if csv_path is not None:
+                try:
+                    linhas = list(csv.DictReader(csv_path.read_text(encoding="utf-8-sig").splitlines(), delimiter=";"))
+                    campos = list(linhas[0].keys()) if linhas else list(self._COLUNAS)
+                except OSError:
+                    continue
+            else:
+                from datetime import datetime
+                csv_path = reports_dir / f"Importacao_livro{livro}_{datetime.now():%Y%m%d_%H%M%S}.csv"
+                linhas, campos = [], list(self._COLUNAS)
+            ja = {(l.get("Origem", "").strip(), str(l.get("FolhaDestino", "")).strip()) for l in linhas}
+            novas = 0
+            for it in its:
+                chave = (str(it.origem), str(it.folha))
+                if chave in ja:
+                    continue
+                linha = {c: "" for c in campos}
+                linha.update({
+                    "Livro": livro, "FolhaDestino": it.folha, "Tipo": "conteudo",
+                    "PastaDestino": it.destino.parent.name, "NomeDestino": it.destino.name,
+                    "Origem": str(it.origem), "PaginaOrigem": "",
+                    "Status": "Roteado (opcao 13)", "Erro": f"pagina estava na pasta do livro {it.livro_pasta_errada}",
+                    "CaminhoDestino": str(it.destino),
+                })
+                linhas.append({c: linha.get(c, "") for c in campos})
+                novas += 1
+            if novas:
                 with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
                     w = csv.DictWriter(f, fieldnames=campos, delimiter=";")
                     w.writeheader()
